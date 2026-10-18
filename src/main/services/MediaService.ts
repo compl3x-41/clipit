@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { settingsStore } from '../store/SettingsStore'
 import { isEdited } from '../store/EditStore'
+import { getClipPeople } from '../store/PeopleStore'
 import { getVideoDuration, getVideoCodec, getImageDimensions } from './FFmpegService'
 import { VIDEO_EXTENSIONS, IMAGE_EXTENSIONS } from '../../shared/types'
 import type { Game, Clip, ClipInfo } from '../../shared/types'
@@ -67,6 +68,7 @@ export function getMediaFiles(): Clip[] {
               sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
               modified: stats.mtimeMs,
               edited: isHandled(fullPath, entry.name),
+              people: getClipPeople(fullPath),
               modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
                 year: 'numeric',
                 month: '2-digit',
@@ -115,6 +117,7 @@ export function getMediaFiles(): Clip[] {
             sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
             modified: stats.mtimeMs,
             edited: isHandled(fullPath, entry.name),
+              people: getClipPeople(fullPath),
             modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
               year: 'numeric',
               month: '2-digit',

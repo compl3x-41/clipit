@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import { shell } from 'electron'
 import { forgetEdited, moveEdited } from '../store/EditStore'
+import { forgetClipPeople, moveClipPeople } from '../store/PeopleStore'
 import { deleteThumbnailCache, renameThumbnailCache, pauseThumbnailGeneration, resumeThumbnailGeneration } from './ThumbnailService'
 import { safeUnlink, safeRename } from '../utils/safeFileOps'
 import { settingsStore } from '../store/SettingsStore'
@@ -25,6 +26,7 @@ export function flushPendingDeletes(): void {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
       deleteThumbnailCache(filePath)
       forgetEdited(filePath)
+      forgetClipPeople(filePath)
     } catch {
       // Keep the clip rather than block quitting
     }
@@ -42,6 +44,7 @@ export async function deleteFile(filePath: string): Promise<{ success: boolean; 
     await safeUnlink(filePath)
     deleteThumbnailCache(filePath)
     forgetEdited(filePath)
+    forgetClipPeople(filePath)
 
     // Delete encoded versions if they exist
     await deleteEncodedVersions(filePath)
@@ -155,6 +158,7 @@ export async function renameFile(oldPath: string, newName: string): Promise<{ su
   }
 
   moveEdited(oldPath, newPath)
+  moveClipPeople(oldPath, newPath)
 
   // The file is already renamed, so a thumbnail cache problem is not a failure
   try {

@@ -15,7 +15,19 @@ export interface Clip {
   modifiedStr: string
   // Trimmed or compressed by Clipit
   edited?: boolean
+  // Ids of the friends tagged in this clip
+  people?: string[]
 }
+
+export interface Person {
+  id: string
+  name: string
+  // When they were last added to a clip, so recent friends come first
+  lastUsed: number
+}
+
+// Pseudo game folder that lists the clips of every game
+export const ALL_CLIPS = '__all__'
 
 export interface ClipInfo {
   type: 'video' | 'image'

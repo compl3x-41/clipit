@@ -8,6 +8,7 @@ import { atomicFileReplace, safeRename, safeUnlink } from '../utils/safeFileOps'
 import { settingsStore } from '../store/SettingsStore'
 import { readFileTimes, applyFileTimes } from '../utils/fileTimes'
 import { markEdited, forgetEdited } from '../store/EditStore'
+import { getClipPeople, tagClip, forgetClipPeople } from '../store/PeopleStore'
 import { resolveOutputHeight, resolveOutputFps, probeForSection } from '../../shared/compress'
 import type { VideoProbe } from '../../shared/compress'
 import type { CompressRequest, CompressResult, CompressProgress } from '../../shared/types'
@@ -187,6 +188,8 @@ export async function compressVideo(
 
   const parsed = path.parse(sourcePath)
   const sourceTimes = readFileTimes(sourcePath)
+  // Replacing the file drops the tags stored on it
+  const sourcePeople = getClipPeople(sourcePath)
   const originalSizeMb = Math.round(probe.sizeBytes / (1024 * 1024) * 10) / 10
   const tempPath = path.join(parsed.dir, `_temp_compress_${parsed.name}.mp4`)
 
@@ -274,8 +277,12 @@ export async function compressVideo(
       await safeRename(tempPath, finalPath)
     }
 
+    tagClip(finalPath, sourcePeople)
     await applyFileTimes(finalPath, sourceTimes)
-    if (deletedOriginal && finalPath !== sourcePath) forgetEdited(sourcePath)
+    if (deletedOriginal && finalPath !== sourcePath) {
+      forgetEdited(sourcePath)
+      forgetClipPeople(sourcePath)
+    }
     markEdited(finalPath)
     onProgress({ percent: 100 })
 

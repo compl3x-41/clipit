@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useApp } from '../context/AppContext'
+import { ALL_CLIPS } from '../../shared/types'
 import type { Clip } from '../../shared/types'
 import type { VideoProbe } from '../../shared/compress'
 
@@ -38,6 +40,7 @@ interface ClipHoverCardProps {
 
 export default function ClipHoverCard({ clip, top, left }: ClipHoverCardProps) {
   const [probe, setProbe] = useState<VideoProbe | null>(null)
+  const { people, selectedGame } = useApp()
 
   useEffect(() => {
     setProbe(null)
@@ -54,6 +57,9 @@ export default function ClipHoverCard({ clip, top, left }: ClipHoverCardProps) {
     ['Recorded', `${formatUkDate(clip.modified)} ${formatUkTime(clip.modified)}`],
     ['Size', `${clip.sizeMb} MB`]
   ]
+  if (selectedGame === ALL_CLIPS) rows.unshift(['Game', clip.game])
+  const friends = people.filter(p => clip.people?.includes(p.id)).map(p => p.name)
+  if (friends.length > 0) rows.push(['Friends', friends.join(', ')])
   if (clip.type === 'video') {
     rows.push(
       ['Length', probe ? formatLength(probe.duration) : '…'],

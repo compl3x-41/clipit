@@ -1,6 +1,7 @@
 import { ipcMain, dialog, clipboard, shell, app } from 'electron'
 import { settingsStore } from '../store/SettingsStore'
 import { getGames, getClips, getClipInfo } from '../services/MediaService'
+import { getPeople, addPerson, removePerson, setClipPeople } from '../store/PeopleStore'
 import { trimVideo } from '../services/TrimService'
 import { compressVideo, cancelCompress, probeVideo } from '../services/CompressService'
 import { getFilmstrip } from '../services/FilmstripService'
@@ -28,6 +29,15 @@ export function registerIpcHandlers() {
   // Trim operations
   ipcMain.handle('clipit:trim:execute', async (_, args: { path: string; start: number; end: number; saveAsCopy?: boolean }) => {
     return trimVideo(args.path, args.start, args.end, args.saveAsCopy || false)
+  })
+
+  // Friends tagged on clips
+  ipcMain.handle('clipit:people:list', async () => getPeople())
+  ipcMain.handle('clipit:people:add', async (_, args: { name: string }) => addPerson(args.name))
+  ipcMain.handle('clipit:people:remove', async (_, args: { id: string }) => removePerson(args.id))
+  ipcMain.handle('clipit:people:set-clip', async (_, args: { path: string; ids: string[] }) => {
+    setClipPeople(args.path, args.ids)
+    return getPeople()
   })
 
   ipcMain.handle('clipit:media:filmstrip', async (_, args: { path: string; count: number }) => {

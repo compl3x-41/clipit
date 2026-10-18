@@ -6,6 +6,7 @@ import { deleteThumbnailCache } from './ThumbnailService'
 import { atomicFileReplace, safeUnlink } from '../utils/safeFileOps'
 import { readFileTimes, applyFileTimes } from '../utils/fileTimes'
 import { markEdited } from '../store/EditStore'
+import { getClipPeople, tagClip } from '../store/PeopleStore'
 import type { TrimResult } from '../../shared/types'
 
 /**
@@ -27,6 +28,8 @@ export async function trimVideo(
 
   const parsed = path.parse(sourcePath)
   const sourceTimes = readFileTimes(sourcePath)
+  // Replacing the file drops the tags stored on it
+  const sourcePeople = getClipPeople(sourcePath)
 
   let outputPath: string
   if (saveAsCopy) {
@@ -87,6 +90,7 @@ export async function trimVideo(
           deleteThumbnailCache(sourcePath)
         }
 
+        tagClip(finalPath, sourcePeople)
         await applyFileTimes(finalPath, sourceTimes)
         markEdited(finalPath)
 

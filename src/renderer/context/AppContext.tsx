@@ -1,6 +1,42 @@
 import { createContext, useState, useEffect, useCallback, useContext, useMemo, useRef, type ReactNode } from 'react'
 import { getCompressJobs } from '../compressQueue'
-import type { Settings, Game, Clip, ClipInfo, EncoderInfo } from '../../shared/types'
+import { ALL_CLIPS } from '../../shared/types'
+import type { Settings, Game, Clip, ClipInfo, EncoderInfo, Person } from '../../shared/types'
+
+// The All clips folder lists every game's clips
+function loadClips(game: string): Promise<Clip[]> {
+  return window.clipit.getClips(game === ALL_CLIPS ? undefined : game)
+}
+
+type ClipFilter = 'all' | 'video' | 'image'
+type ClipSort = 'date' | 'name' | 'size'
+
+function visibleClips(clips: Clip[], hiddenPaths: Set<string>, filter: ClipFilter, sort: ClipSort, personFilter: string[]): Clip[] {
+  let result = clips.filter(clip => !hiddenPaths.has(clip.path))
+
+  if (filter !== 'all') {
+    result = result.filter(clip => clip.type === filter)
+  }
+
+  // Clips that have every selected friend in them
+  if (personFilter.length > 0) {
+    result = result.filter(clip => personFilter.every(id => clip.people?.includes(id)))
+  }
+
+  switch (sort) {
+    case 'date':
+      result.sort((a, b) => b.modified - a.modified)
+      break
+    case 'name':
+      result.sort((a, b) => a.name.localeCompare(b.name))
+      break
+    case 'size':
+      result.sort((a, b) => b.sizeMb - a.sizeMb)
+      break
+  }
+
+  return result
+}
 
 interface Toast {
   id: number
@@ -51,6 +87,14 @@ interface AppContextType {
   setFilter: (filter: 'all' | 'video' | 'image') => void
   setSort: (sort: 'date' | 'name' | 'size') => void
   filteredClips: Clip[]
+
+  // Friends tagged on clips
+  people: Person[]
+  personFilter: string[]
+  setPersonFilter: (ids: string[]) => void
+  addPerson: (name: string) => Promise<Person>
+  removePerson: (id: string) => Promise<void>
+  setClipPeople: (clip: Clip, ids: string[]) => Promise<void>
 
   // Encoders
   encoders: EncoderInfo[]
@@ -109,6 +153,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Filter & Sort
   const [filter, setFilter] = useState<'all' | 'video' | 'image'>('all')
   const [sort, setSort] = useState<'date' | 'name' | 'size'>('date')
+  const [people, setPeople] = useState<Person[]>([])
+  const [personFilter, setPersonFilter] = useState<string[]>([])
 
   // Encoders
   const [encoders, setEncoders] = useState<EncoderInfo[]>([])
@@ -172,7 +218,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLastSelectedIndex(-1)
       setClipInfo(null)
       if (targetLocation) {
-        const loadedClips = await window.clipit.getClips(targetLocation)
+        const loadedClips = await loadClips(targetLocation)
         setClips(loadedClips)
       } else {
         setClips([])
@@ -197,7 +243,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLastSelectedIndex(-1)
       setClipInfo(null)
       if (targetLocation) {
-        const loadedClips = await window.clipit.getClips(targetLocation)
+        const loadedClips = await loadClips(targetLocation)
         setClips(loadedClips)
       } else {
         setClips([])
@@ -247,6 +293,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const loadedGames = await window.clipit.getGames()
         setGames(loadedGames)
+        setPeople(await window.clipit.getPeople())
       }
 
       setIsInitializing(false)
@@ -368,7 +415,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setClipInfo(null)
 
     if (game) {
-      const loadedClips = await window.clipit.getClips(game)
+      const loadedClips = await loadClips(game)
       setClips(loadedClips)
     } else {
       setClips([])
@@ -380,27 +427,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [isNavigating, addToHistory])
 
   // Filtered and sorted clips
-  const filteredClips = useMemo(() => {
-    let result = clips.filter(clip => !hiddenPaths.has(clip.path))
-
-    if (filter !== 'all') {
-      result = result.filter(clip => clip.type === filter)
-    }
-
-    switch (sort) {
-      case 'date':
-        result.sort((a, b) => b.modified - a.modified)
-        break
-      case 'name':
-        result.sort((a, b) => a.name.localeCompare(b.name))
-        break
-      case 'size':
-        result.sort((a, b) => b.sizeMb - a.sizeMb)
-        break
-    }
-
-    return result
-  }, [clips, filter, sort, hiddenPaths])
+  const filteredClips = useMemo(
+    () => visibleClips(clips, hiddenPaths, filter, sort, personFilter),
+    [clips, filter, sort, hiddenPaths, personFilter]
+  )
 
   const selectClip = useCallback((clip: Clip | null, isMulti = false, isRange = false) => {
     if (!clip) {
@@ -411,22 +441,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Compute filtered clips inline
-    let currentFilteredClips = clips.filter(c => !hiddenPaths.has(c.path))
-    if (filter !== 'all') {
-      currentFilteredClips = currentFilteredClips.filter(c => c.type === filter)
-    }
-    switch (sort) {
-      case 'date':
-        currentFilteredClips.sort((a, b) => b.modified - a.modified)
-        break
-      case 'name':
-        currentFilteredClips.sort((a, b) => a.name.localeCompare(b.name))
-        break
-      case 'size':
-        currentFilteredClips.sort((a, b) => b.sizeMb - a.sizeMb)
-        break
-    }
+    const currentFilteredClips = visibleClips(clips, hiddenPaths, filter, sort, personFilter)
 
     const clipIndex = currentFilteredClips.findIndex(c => c.path === clip.path)
 
@@ -457,7 +472,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSelectedClips([clip])
       setLastSelectedIndex(clipIndex)
     }
-  }, [clips, filter, sort, hiddenPaths, lastSelectedIndex, selectedClips])
+  }, [clips, filter, sort, hiddenPaths, personFilter, lastSelectedIndex, selectedClips])
 
   const selectAllClips = useCallback(() => {
     setSelectedClips(filteredClips)
@@ -480,10 +495,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const refreshClips = useCallback(async () => {
     if (selectedGame) {
-      const loadedClips = await window.clipit.getClips(selectedGame)
+      const loadedClips = await loadClips(selectedGame)
       setClips(loadedClips)
     }
   }, [selectedGame])
+
+  const addPerson = useCallback(async (name: string) => {
+    const person = await window.clipit.addPerson(name)
+    setPeople(await window.clipit.getPeople())
+    return person
+  }, [])
+
+  const removePerson = useCallback(async (id: string) => {
+    await window.clipit.removePerson(id)
+    setPeople(await window.clipit.getPeople())
+    setPersonFilter(prev => prev.filter(personId => personId !== id))
+    const strip = (clip: Clip) => clip.people?.includes(id) ? { ...clip, people: clip.people.filter(p => p !== id) } : clip
+    setClips(prev => prev.map(strip))
+    setSelectedClip(prev => prev && strip(prev))
+    setSelectedClips(prev => prev.map(strip))
+  }, [])
+
+  const setClipPeople = useCallback(async (clip: Clip, ids: string[]) => {
+    setPeople(await window.clipit.setClipPeople(clip.path, ids))
+    const update = (c: Clip) => c.path === clip.path ? { ...c, people: ids } : c
+    setClips(prev => prev.map(update))
+    setSelectedClip(prev => prev && update(prev))
+    setSelectedClips(prev => prev.map(update))
+  }, [])
 
   const detectEncoders = useCallback(async () => {
     const detected = await window.clipit.detectEncoders()
@@ -621,6 +660,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFilter,
     setSort,
     filteredClips,
+    people,
+    personFilter,
+    setPersonFilter,
+    addPerson,
+    removePerson,
+    setClipPeople,
     encoders,
     detectEncoders,
     loading,

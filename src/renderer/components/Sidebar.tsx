@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
 import { getCompressJobs } from '../compressQueue'
 import ClipHoverCard, { formatUkDate, formatUkTime } from './ClipHoverCard'
-import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
+import PeoplePicker, { PersonAvatar } from './PeoplePicker'
+import { ALL_CLIPS } from '../../shared/types'
+import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Layers, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
 import type { Clip } from '../../shared/types'
 
 export default function Sidebar() {
@@ -30,8 +32,14 @@ export default function Sidebar() {
     refreshClips,
     refreshGames,
     addToast,
-    deleteClips
+    deleteClips,
+    people,
+    personFilter,
+    setPersonFilter
   } = useApp()
+
+  const gameLabel = (game: string) => game === ALL_CLIPS ? 'All clips' : game
+  const totalClips = games.reduce((sum, game) => sum + game.count, 0)
 
   // Tunnel state
   const [tunnelInfo, setTunnelInfo] = useState<{ url: string; isActive: boolean; port: number }>({
@@ -286,7 +294,7 @@ export default function Sidebar() {
         <div style={{ flex: 1 }}>
           {selectedGame ? (
             <>
-              <div className="sidebar-title">{selectedGame}</div>
+              <div className="sidebar-title">{gameLabel(selectedGame)}</div>
               <div className="sidebar-subtitle">{filteredClips.length} clips</div>
             </>
           ) : (
@@ -326,7 +334,7 @@ export default function Sidebar() {
             <>
               <Separator size={12} className="breadcrumb-separator" />
               <span className="breadcrumb-item breadcrumb-current">
-                <span>{selectedGame}</span>
+                <span>{gameLabel(selectedGame)}</span>
               </span>
             </>
           )}
@@ -378,6 +386,19 @@ export default function Sidebar() {
               Images
             </button>
           </div>
+          {people.length > 0 && (
+            <div className="friends-filter-bar">
+              <PeoplePicker
+                people={people}
+                selected={personFilter}
+                onChange={setPersonFilter}
+                label="Friends"
+              />
+              {personFilter.length > 0 && (
+                <button className="friends-filter-clear" onClick={() => setPersonFilter([])}>Clear</button>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -454,8 +475,16 @@ export default function Sidebar() {
                     <>
                       <div className="list-item-name">{clip.name}</div>
                       <div className="list-item-meta">
+                        {selectedGame === ALL_CLIPS && <>{clip.game} • </>}
                         {clip.sizeMb} MB • {formatUkDate(clip.modified)} {formatUkTime(clip.modified)}
                       </div>
+                      {clip.people && clip.people.length > 0 && (
+                        <div className="list-item-people">
+                          {people.filter(p => clip.people?.includes(p.id)).map(person => (
+                            <PersonAvatar key={person.id} person={person} size={16} />
+                          ))}
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -463,8 +492,16 @@ export default function Sidebar() {
             )
           })
         ) : (
-          // Show games list
-          games.map((game) => (
+          // Show games list, with every clip in one place at the top
+          [...(games.length > 1 ? [{ name: ALL_CLIPS, count: totalClips }] : []), ...games].map((game) => game.name === ALL_CLIPS ? (
+            <div key={ALL_CLIPS} className="list-item list-item-all" onClick={() => selectGame(ALL_CLIPS)}>
+              <Layers size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+              <div className="list-item-info">
+                <div className="list-item-name">All clips</div>
+              </div>
+              <span className="list-item-count">{game.count}</span>
+            </div>
+          ) : (
             <div
               key={game.name}
               className={`list-item ${game.name === 'Uncategorized' ? 'list-item-uncategorized' : ''}`}
@@ -493,9 +530,11 @@ export default function Sidebar() {
             <div className="empty-state-icon">📂</div>
             <div className="empty-state-title">No clips found</div>
             <div className="empty-state-text">
-              {filter === 'all'
-                ? 'This game folder is empty'
-                : `No ${filter}s in this folder`}
+              {personFilter.length > 0
+                ? 'No clips have all the selected friends in them'
+                : filter === 'all'
+                  ? 'This game folder is empty'
+                  : `No ${filter}s in this folder`}
             </div>
           </div>
         )}

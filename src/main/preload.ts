@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Settings, ShareRequest, Game, Clip, ClipInfo, TrimResult, ShareResult, EncoderInfo, UploadProgress, CompressRequest, CompressResult, CompressProgress } from '../shared/types'
+import type { Settings, ShareRequest, Game, Clip, ClipInfo, TrimResult, ShareResult, EncoderInfo, UploadProgress, CompressRequest, CompressResult, CompressProgress, Person } from '../shared/types'
 import type { VideoProbe } from '../shared/compress'
 
 contextBridge.exposeInMainWorld('clipit', {
@@ -50,6 +50,18 @@ contextBridge.exposeInMainWorld('clipit', {
 
   deleteFile: (path: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('clipit:file:delete', { path }),
+
+  getPeople: (): Promise<Person[]> =>
+    ipcRenderer.invoke('clipit:people:list'),
+
+  addPerson: (name: string): Promise<Person> =>
+    ipcRenderer.invoke('clipit:people:add', { name }),
+
+  removePerson: (id: string): Promise<void> =>
+    ipcRenderer.invoke('clipit:people:remove', { id }),
+
+  setClipPeople: (path: string, ids: string[]): Promise<Person[]> =>
+    ipcRenderer.invoke('clipit:people:set-clip', { path, ids }),
 
   getFilmstrip: (path: string, count: number): Promise<string[]> =>
     ipcRenderer.invoke('clipit:media:filmstrip', { path, count }),
@@ -171,6 +183,10 @@ declare global {
       deleteFile: (path: string) => Promise<{ success: boolean; error?: string }>
       setPendingDeletes: (paths: string[]) => void
       getFilmstrip: (path: string, count: number) => Promise<string[]>
+      getPeople: () => Promise<Person[]>
+      addPerson: (name: string) => Promise<Person>
+      removePerson: (id: string) => Promise<void>
+      setClipPeople: (path: string, ids: string[]) => Promise<Person[]>
       renameFile: (path: string, newName: string) => Promise<{ success: boolean; error?: string; newPath?: string }>
       showInExplorer: (path: string) => Promise<{ success: boolean; error?: string }>
       getSettings: () => Promise<Settings>

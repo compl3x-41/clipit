@@ -3,9 +3,10 @@ import { useApp } from '../context/AppContext'
 import Timeline from './Timeline'
 import CompressModal from './CompressModal'
 import ClipTitle from './ClipTitle'
+import PeoplePicker from './PeoplePicker'
 import { formatUkDate, formatUkTime } from './ClipHoverCard'
 import { Play, Pause, Scissors, Share2, Trash2, Volume1, Volume2, VolumeX, Loader2, Maximize, Minimize, Minimize2 } from 'lucide-react'
-import type { CompressRequest } from '../../shared/types'
+import type { CompressRequest, Person } from '../../shared/types'
 import { useTheme } from '../theme'
 import { buildCompressRequest, loadCustomSettings, loadDeleteOriginal, loadPresetId, presetName, settingsForPreset } from '../compressPrefs'
 import { estimateSizeMb, probeForSection } from '../../shared/compress'
@@ -32,7 +33,7 @@ const SHORTCUTS: [string, string][] = [
 ]
 
 export default function MainContent() {
-  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay } = useApp()
+  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, people, addPerson, removePerson, setClipPeople } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const playerContainerRef = useRef<HTMLDivElement>(null)
 
@@ -460,6 +461,12 @@ export default function MainContent() {
     })
   }, [addToast, selectClip, refreshClips, refreshGames])
 
+  const handleRemovePerson = useCallback((person: Person) => {
+    if (window.confirm(`Delete ${person.name} from Clipit? They'll be untagged from every clip.`)) {
+      removePerson(person.id)
+    }
+  }, [removePerson])
+
   const handleDelete = useCallback(() => {
     if (!selectedClip) return
     deleteClips([selectedClip])
@@ -716,6 +723,13 @@ export default function MainContent() {
       <div className="controls">
         <div className="clip-title-row">
           <ClipTitle name={selectedClip.name} onRename={handleRename} />
+          <PeoplePicker
+            people={people}
+            selected={selectedClip.people ?? []}
+            onChange={(ids) => setClipPeople(selectedClip, ids)}
+            onAdd={addPerson}
+            onRemove={handleRemovePerson}
+          />
           <div className="clip-title-meta">
             <span>{formatUkDate(selectedClip.modified)}</span>
             <span>{formatUkTime(selectedClip.modified)}</span>
