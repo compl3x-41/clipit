@@ -12,6 +12,7 @@ import UpdateBanner from './components/UpdateBanner'
 import StatusBar from './components/StatusBar'
 import UndoDeleteBar from './components/UndoDeleteBar'
 import SidebarResizer from './components/SidebarResizer'
+import FriendManagerModal from './components/FriendManagerModal'
 import './theme'
 
 function AppContent() {
@@ -20,6 +21,7 @@ function AppContent() {
     loading,
     loadingText,
     showSettings,
+    showFriendManager,
     showTunnelNotice,
     dismissTunnelNotice,
     showChangelog,
@@ -74,6 +76,7 @@ function AppContent() {
         <SidebarResizer />
         <MainContent />
         {showSettings && <SettingsModal />}
+        {showFriendManager && <FriendManagerModal />}
         {showTunnelNotice && <TunnelNoticeModal onDismiss={dismissTunnelNotice} />}
         {showChangelog && <ChangelogModal version={appVersion} onDismiss={dismissChangelog} />}
         {loading && <LoadingOverlay text={loadingText} />}

@@ -11,11 +11,13 @@ interface PeopleSchema {
   people: Person[]
   // Clip path -> ids of the people in it
   clipPeople: Record<string, string[]>
+  // Friends merged into another; tags on files still name the old id
+  mergedInto: Record<string, string>
 }
 
 const store = new Store<PeopleSchema>({
   name: 'clipit-people',
-  defaults: { people: [], clipPeople: {} }
+  defaults: { people: [], clipPeople: {}, mergedInto: {} }
 })
 
 // Clip lists read this for every clip, so keep it in memory instead of rereading the file
@@ -85,6 +87,47 @@ export function addPerson(name: string): Person {
   return person
 }
 
+export function updatePerson(id: string, changes: { name?: string; aliases?: string[] }): Person[] {
+  const clean = (values: string[]) => [...new Set(values.map(v => v.trim()).filter(Boolean))]
+  write('people', getPeople().map(p => p.id !== id ? p : {
+    ...p,
+    name: changes.name?.trim() || p.name,
+    aliases: changes.aliases ? clean(changes.aliases) : p.aliases
+  }))
+  return getPeople()
+}
+
+/**
+ * Fold one friend into another: their names become aliases and their clips move over
+ */
+export function mergePeople(fromId: string, intoId: string): Person[] {
+  const from = getPeople().find(p => p.id === fromId)
+  const into = getPeople().find(p => p.id === intoId)
+  if (!from || !into || fromId === intoId) return getPeople()
+
+  const aliases = [...(into.aliases ?? []), from.name, ...(from.aliases ?? [])]
+  write('people', getPeople()
+    .filter(p => p.id !== fromId)
+    .map(p => p.id === intoId ? { ...p, aliases: [...new Set(aliases)], lastUsed: Math.max(p.lastUsed, from.lastUsed) } : p))
+
+  const merged = read('mergedInto')
+  for (const [oldId, newId] of Object.entries(merged)) {
+    if (newId === fromId) merged[oldId] = intoId
+  }
+  merged[fromId] = intoId
+  write('mergedInto', merged)
+
+  const clipPeople = read('clipPeople')
+  for (const [clip, ids] of Object.entries(clipPeople)) {
+    if (!ids.includes(fromId)) continue
+    const next = [...new Set(ids.map(id => id === fromId ? intoId : id))]
+    clipPeople[clip] = next
+    writeFileTag(clip, next)
+  }
+  write('clipPeople', clipPeople)
+  return getPeople()
+}
+
 export function removePerson(id: string): void {
   write('people', getPeople().filter(p => p.id !== id))
   const clipPeople = read('clipPeople')
@@ -98,10 +141,20 @@ export function removePerson(id: string): void {
 
 export function getClipPeople(filePath: string): string[] {
   const ids = readFileTag(filePath) ?? read('clipPeople')[key(filePath)] ?? []
-  // Friends deleted from Clipit can still be listed on the file
   if (ids.length === 0) return ids
+  // Follow merges, and drop friends deleted from Clipit that are still listed on the file
+  const merged = read('mergedInto')
   const known = new Set(getPeople().map(p => p.id))
-  return ids.filter(id => known.has(id))
+  return [...new Set(ids.map(id => merged[id] ?? id))].filter(id => known.has(id))
+}
+
+/**
+ * Add friends to a clip, keeping whoever is already tagged
+ */
+export function addClipPeople(filePath: string, ids: string[]): void {
+  const current = getClipPeople(filePath)
+  const added = ids.filter(id => !current.includes(id))
+  if (added.length > 0) tagClip(filePath, [...current, ...added])
 }
 
 /**

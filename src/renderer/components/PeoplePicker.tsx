@@ -12,6 +12,7 @@ interface PeoplePickerProps {
   // Lets the dropdown add new friends and remove old ones
   onAdd?: (name: string) => Promise<Person>
   onRemove?: (person: Person) => void
+  onManage?: () => void
   label?: string
   emptyHint?: string
 }
@@ -44,7 +45,7 @@ export function byRecent(people: Person[]): Person[] {
 // Clicking a chip shouldn't focus it, or Space would toggle it instead of playing the clip
 const keepFocus = (e: React.MouseEvent) => e.preventDefault()
 
-export default function PeoplePicker({ people, selected, onChange, onAdd, onRemove, label, emptyHint }: PeoplePickerProps) {
+export default function PeoplePicker({ people, selected, onChange, onAdd, onRemove, onManage, label, emptyHint }: PeoplePickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -158,6 +159,11 @@ export default function PeoplePicker({ people, selected, onChange, onAdd, onRemo
               <div className="people-none">{search ? 'No friends match' : 'Everyone is shown already'}</div>
             )}
           </div>
+          {onManage && (
+            <button className="people-manage" onClick={() => { setOpen(false); onManage() }}>
+              Manage friends and Discord names…
+            </button>
+          )}
         </div>
       )}
     </div>

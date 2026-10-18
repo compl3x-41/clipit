@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Settings, ShareRequest, Game, Clip, ClipInfo, TrimResult, ShareResult, EncoderInfo, UploadProgress, CompressRequest, CompressResult, CompressProgress, Person } from '../shared/types'
+import type { Settings, ShareRequest, Game, Clip, ClipInfo, TrimResult, ShareResult, EncoderInfo, UploadProgress, CompressRequest, CompressResult, CompressProgress, Person, ScanProgress, ScanDebugItem, UnlinkedName, ScanSettings } from '../shared/types'
 import type { VideoProbe } from '../shared/compress'
 
 contextBridge.exposeInMainWorld('clipit', {
@@ -62,6 +62,40 @@ contextBridge.exposeInMainWorld('clipit', {
 
   runCleanup: (): Promise<{ bytes: number; files: number }> =>
     ipcRenderer.invoke('clipit:cleanup:run'),
+
+  updatePerson: (id: string, changes: { name?: string; aliases?: string[] }): Promise<Person[]> =>
+    ipcRenderer.invoke('clipit:people:update', { id, ...changes }),
+
+  mergePeople: (fromId: string, intoId: string): Promise<Person[]> =>
+    ipcRenderer.invoke('clipit:people:merge', { fromId, intoId }),
+
+  startScan: (mode: 'library' | 'test'): Promise<{ progress: ScanProgress; debug?: ScanDebugItem[] }> =>
+    ipcRenderer.invoke('clipit:scan:start', { mode }),
+
+  cancelScan: (): Promise<void> => ipcRenderer.invoke('clipit:scan:cancel'),
+
+  getScanProgress: (): Promise<ScanProgress> => ipcRenderer.invoke('clipit:scan:progress'),
+
+  onScanProgress: (callback: (progress: ScanProgress) => void) => {
+    const handler = (_: any, progress: ScanProgress) => callback(progress)
+    ipcRenderer.on('scan-progress', handler)
+    return () => ipcRenderer.removeListener('scan-progress', handler)
+  },
+
+  getUnlinkedNames: (): Promise<UnlinkedName[]> => ipcRenderer.invoke('clipit:scan:unlinked'),
+
+  linkScanName: (name: string, personId: string): Promise<number> =>
+    ipcRenderer.invoke('clipit:scan:link', { name, personId }),
+
+  ignoreScanName: (name: string): Promise<void> => ipcRenderer.invoke('clipit:scan:ignore', { name }),
+
+  unignoreScanName: (name: string): Promise<void> => ipcRenderer.invoke('clipit:scan:unignore', { name }),
+
+  getIgnoredScanNames: (): Promise<string[]> => ipcRenderer.invoke('clipit:scan:ignored'),
+
+  getScanSettings: (): Promise<ScanSettings> => ipcRenderer.invoke('clipit:scan:get-settings'),
+
+  setScanSettings: (settings: ScanSettings): Promise<void> => ipcRenderer.invoke('clipit:scan:set-settings', settings),
 
   getPeople: (): Promise<Person[]> =>
     ipcRenderer.invoke('clipit:people:list'),
@@ -198,6 +232,19 @@ declare global {
       onMediaChanged: (callback: () => void) => () => void
       getCleanupSummary: () => Promise<{ bytes: number; files: number }>
       runCleanup: () => Promise<{ bytes: number; files: number }>
+      updatePerson: (id: string, changes: { name?: string; aliases?: string[] }) => Promise<Person[]>
+      mergePeople: (fromId: string, intoId: string) => Promise<Person[]>
+      startScan: (mode: 'library' | 'test') => Promise<{ progress: ScanProgress; debug?: ScanDebugItem[] }>
+      cancelScan: () => Promise<void>
+      getScanProgress: () => Promise<ScanProgress>
+      onScanProgress: (callback: (progress: ScanProgress) => void) => () => void
+      getUnlinkedNames: () => Promise<UnlinkedName[]>
+      linkScanName: (name: string, personId: string) => Promise<number>
+      ignoreScanName: (name: string) => Promise<void>
+      unignoreScanName: (name: string) => Promise<void>
+      getIgnoredScanNames: () => Promise<string[]>
+      getScanSettings: () => Promise<ScanSettings>
+      setScanSettings: (settings: ScanSettings) => Promise<void>
       getPeople: () => Promise<Person[]>
       addPerson: (name: string) => Promise<Person>
       removePerson: (id: string) => Promise<void>

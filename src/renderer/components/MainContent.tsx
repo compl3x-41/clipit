@@ -39,7 +39,7 @@ const PLAYBACK_SPEEDS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5]
 const QUICK_SPEEDS = [1, 0.5, 0.25]
 
 export default function MainContent() {
-  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, people, addPerson, removePerson, setClipPeople } = useApp()
+  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, people, addPerson, removePerson, setClipPeople, setShowFriendManager } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const playerContainerRef = useRef<HTMLDivElement>(null)
 
@@ -805,6 +805,7 @@ export default function MainContent() {
             onChange={(ids) => setClipPeople(selectedClip, ids)}
             onAdd={addPerson}
             onRemove={handleRemovePerson}
+            onManage={() => setShowFriendManager(true)}
             label="Friends"
           />
         </div>

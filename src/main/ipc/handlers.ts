@@ -3,7 +3,9 @@ import { settingsStore } from '../store/SettingsStore'
 import { getGames, getClips, getClipInfo } from '../services/MediaService'
 import { watchRecordings } from '../services/FolderWatchService'
 import { getCleanupSummary, runCleanup } from '../services/CleanupService'
-import { getPeople, addPerson, removePerson, setClipPeople } from '../store/PeopleStore'
+import { getPeople, addPerson, removePerson, setClipPeople, updatePerson, mergePeople } from '../store/PeopleStore'
+import { startScan, cancelScan, getScanProgress, getUnlinkedNames, linkName, ignoreName, unignoreName, applyScanResults } from '../services/OverlayScanService'
+import { getIgnoredNames, getScanSettings, setScanSettings } from '../store/ScanStore'
 import { trimVideo } from '../services/TrimService'
 import { compressVideo, cancelCompress, probeVideo } from '../services/CompressService'
 import { getFilmstrip } from '../services/FilmstripService'
@@ -12,7 +14,7 @@ import { deleteFile, renameFile, showInExplorer, setPendingDeletes } from '../se
 import { detectAvailableEncoders } from '../services/FFmpegService'
 import { tunnelService } from '../services/TunnelService'
 import { updateService } from '../services/UpdateService'
-import type { ShareRequest, Settings, CompressRequest } from '../../shared/types'
+import type { ShareRequest, Settings, CompressRequest, ScanSettings } from '../../shared/types'
 
 export function registerIpcHandlers() {
   // Media operations
@@ -41,6 +43,26 @@ export function registerIpcHandlers() {
   ipcMain.handle('clipit:people:list', async () => getPeople())
   ipcMain.handle('clipit:people:add', async (_, args: { name: string }) => addPerson(args.name))
   ipcMain.handle('clipit:people:remove', async (_, args: { id: string }) => removePerson(args.id))
+  ipcMain.handle('clipit:people:update', async (_, args: { id: string; name?: string; aliases?: string[] }) => {
+    const people = updatePerson(args.id, { name: args.name, aliases: args.aliases })
+    // New aliases can match names a scan already found
+    applyScanResults()
+    return people
+  })
+  ipcMain.handle('clipit:people:merge', async (_, args: { fromId: string; intoId: string }) => mergePeople(args.fromId, args.intoId))
+
+  // Reading friends from the Discord overlay
+  ipcMain.handle('clipit:scan:start', async (_, args: { mode: 'library' | 'test' }) => startScan(args.mode))
+  ipcMain.handle('clipit:scan:cancel', async () => cancelScan())
+  ipcMain.handle('clipit:scan:progress', async () => getScanProgress())
+  ipcMain.handle('clipit:scan:unlinked', async () => getUnlinkedNames())
+  ipcMain.handle('clipit:scan:link', async (_, args: { name: string; personId: string }) => linkName(args.name, args.personId))
+  ipcMain.handle('clipit:scan:ignore', async (_, args: { name: string }) => ignoreName(args.name))
+  ipcMain.handle('clipit:scan:unignore', async (_, args: { name: string }) => unignoreName(args.name))
+  ipcMain.handle('clipit:scan:ignored', async () => getIgnoredNames())
+  ipcMain.handle('clipit:scan:get-settings', async () => getScanSettings())
+  ipcMain.handle('clipit:scan:set-settings', async (_, settings: ScanSettings) => setScanSettings(settings))
+
   ipcMain.handle('clipit:people:set-clip', async (_, args: { path: string; ids: string[] }) => {
     setClipPeople(args.path, args.ids)
     return getPeople()

@@ -104,6 +104,9 @@ interface AppContextType {
   addPerson: (name: string) => Promise<Person>
   removePerson: (id: string) => Promise<void>
   setClipPeople: (clip: Clip, ids: string[]) => Promise<void>
+  refreshPeople: () => Promise<void>
+  showFriendManager: boolean
+  setShowFriendManager: (show: boolean) => void
 
   // Encoders
   encoders: EncoderInfo[]
@@ -165,6 +168,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [people, setPeople] = useState<Person[]>([])
   const [personFilter, setPersonFilter] = useState<string[]>([])
   const [search, setSearch] = useState('')
+  const [showFriendManager, setShowFriendManager] = useState(false)
 
   // Encoders
   const [encoders, setEncoders] = useState<EncoderInfo[]>([])
@@ -526,6 +530,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedClips(prev => prev.map(strip))
   }, [])
 
+  const refreshPeople = useCallback(async () => {
+    setPeople(await window.clipit.getPeople())
+  }, [])
+
   const setClipPeople = useCallback(async (clip: Clip, ids: string[]) => {
     setPeople(await window.clipit.setClipPeople(clip.path, ids))
     const update = (c: Clip) => c.path === clip.path ? { ...c, people: ids } : c
@@ -539,8 +547,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return window.clipit.onMediaChanged(() => {
       refreshGames()
       refreshClips()
+      refreshPeople()
     })
-  }, [refreshGames, refreshClips])
+  }, [refreshGames, refreshClips, refreshPeople])
 
   const detectEncoders = useCallback(async () => {
     const detected = await window.clipit.detectEncoders()
@@ -686,6 +695,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addPerson,
     removePerson,
     setClipPeople,
+    refreshPeople,
+    showFriendManager,
+    setShowFriendManager,
     encoders,
     detectEncoders,
     loading,

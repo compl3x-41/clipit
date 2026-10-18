@@ -28,6 +28,52 @@ export interface Person {
   name: string
   // When they were last added to a clip, so recent friends come first
   lastUsed: number
+  // Other names they go by, e.g. their Discord name, used to recognise them in the overlay
+  aliases?: string[]
+}
+
+// Part of the video the Discord overlay sits in, as fractions of the frame
+export interface OverlayRegion {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ScanSettings {
+  region: OverlayRegion
+  // Frames read per clip; the overlay may only show people while they talk
+  framesPerClip: number
+}
+
+export interface ScanProgress {
+  running: boolean
+  mode: 'library' | 'test'
+  total: number
+  done: number
+  current?: string
+  // Clips where the overlay showed at least one name
+  clipsWithNames: number
+  // Clips that got at least one friend tagged
+  clipsTagged: number
+  skipped: number
+  failed: number
+  error?: string
+}
+
+export interface ScanDebugItem {
+  clip: string
+  // The cropped overlay frames as data URLs
+  frames: string[]
+  lines: string[]
+  names: string[]
+  matched: string[]
+  error?: string
+}
+
+export interface UnlinkedName {
+  name: string
+  clips: number
 }
 
 // Pseudo game folder that lists the clips of every game

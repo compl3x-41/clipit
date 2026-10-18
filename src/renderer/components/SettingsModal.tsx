@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Folder, FolderOpen, Film, Cpu, X, Save, Trash2, User, Palette } from 'lucide-react'
+import { Folder, FolderOpen, Film, Cpu, X, Save, Trash2, User, Palette, Users } from 'lucide-react'
+import { DEV_OPTIONS_KEY, loadDevOptions } from './FriendManagerModal'
 import { THEMES, setTheme, useTheme, type Theme } from '../theme'
 
 export default function SettingsModal() {
-  const { settings, updateSettings, pickDirectory, setShowSettings, encoders, detectEncoders, addToast } = useApp()
+  const { settings, updateSettings, pickDirectory, setShowSettings, setShowFriendManager, encoders, detectEncoders, addToast } = useApp()
+  const [devOptions, setDevOptions] = useState(loadDevOptions)
 
   const [recordingsDir, setRecordingsDir] = useState(settings?.recordingsDir || '')
   const [shareDir, setShareDir] = useState(settings?.shareDir || '')
@@ -94,6 +96,37 @@ export default function SettingsModal() {
                 Changes straight away. You can drag the edge of the clip list to make it wider.
               </p>
             </div>
+          </div>
+
+          <div className="modal-section">
+            <h3 className="modal-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Users size={16} />
+              <span>Friends</span>
+            </h3>
+            <div className="form-group">
+              <button className="btn btn-secondary" onClick={() => setShowFriendManager(true)}>
+                <Users size={16} />
+                Friend Manager and Discord auto-tag
+              </button>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                Rename and merge friends, add their Discord names, and scan clips for who was in the Discord overlay.
+              </p>
+            </div>
+            <label className="form-checkbox">
+              <input
+                type="checkbox"
+                checked={devOptions}
+                onChange={(e) => {
+                  setDevOptions(e.target.checked)
+                  try {
+                    localStorage.setItem(DEV_OPTIONS_KEY, e.target.checked ? '1' : '0')
+                  } catch {
+                    // Only lasts this session
+                  }
+                }}
+              />
+              <span>Developer options (test scans, overlay position)</span>
+            </label>
           </div>
 
           <div className="modal-section">
