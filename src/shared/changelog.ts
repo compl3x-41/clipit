@@ -5,6 +5,18 @@ export interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '1.5.0',
+    changes: [
+      'Tag friends on clips, filter clips by one or more friends, and an All clips view across every game',
+      'New clips appear on their own, plus a clip search box (Ctrl+F)',
+      'Playback speed menu from 0.1x to 5x (S toggles 1x, 0.5x, 0.25x)',
+      'Clip list as a list or 1, 2 or 3 across; game folders sort by recently added, most clips or name and show clip count and size',
+      'Clips renamed or trimmed but not compressed glow yellow; already-compressed clips are spotted automatically',
+      'Thumbnails are kept in Clipit\'s own folder instead of next to your clips, and a Clean up button clears cached pictures',
+      'Bigger title bar with date, time, size and friends next to the clip name',
+    ],
+  },
+  {
     version: '1.4.0',
     changes: [
       'New Modern theme (default) with thumbnail cards and a filmstrip timeline with hover previews; Classic is still in Settings',
