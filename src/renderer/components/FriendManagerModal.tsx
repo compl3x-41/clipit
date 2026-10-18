@@ -89,6 +89,8 @@ export default function FriendManagerModal() {
   const [newName, setNewName] = useState('')
   const [unlinked, setUnlinked] = useState<UnlinkedName[]>([])
   const [ignored, setIgnored] = useState<string[]>([])
+  // A name seen in one clip only is usually a misread, so those wait behind a button
+  const [showOneOffs, setShowOneOffs] = useState(false)
   const [scanSettings, setScanSettings] = useState<ScanSettings | null>(null)
   const [debug, setDebug] = useState<ScanDebugItem[] | null>(null)
   const [devOptions] = useState(loadDevOptions)
@@ -261,7 +263,7 @@ export default function FriendManagerModal() {
                 <div className="friend-empty">Nothing to link. Run a scan, or every name found already belongs to a friend.</div>
               ) : (
                 <div className="unlinked-list">
-                  {unlinked.map(entry => (
+                  {unlinked.filter(entry => showOneOffs || entry.clips > 1).map(entry => (
                     <div className="unlinked-row" key={entry.name}>
                       <span className="unlinked-name">{entry.name}</span>
                       <span className="unlinked-count">{entry.clips} {entry.clips === 1 ? 'clip' : 'clips'}</span>
@@ -275,6 +277,11 @@ export default function FriendManagerModal() {
                       </button>
                     </div>
                   ))}
+                  {unlinked.some(entry => entry.clips === 1) && (
+                    <button className="btn btn-secondary unlinked-more" onClick={() => setShowOneOffs(!showOneOffs)}>
+                      {showOneOffs ? 'Hide names seen in only one clip' : `Show ${unlinked.filter(entry => entry.clips === 1).length} names seen in only one clip`}
+                    </button>
+                  )}
                 </div>
               )}
 

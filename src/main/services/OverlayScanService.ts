@@ -13,7 +13,7 @@ import {
   getScanResults, saveScanResult, flushScanResults, getIgnoredNames, setIgnoredNames,
   getScanSettings, scanKey, type ClipScan
 } from '../store/ScanStore'
-import { parseOverlayLines, normalizeName, findPerson } from '../../shared/nameMatch'
+import { parseOverlayLines, normalizeName, looseName, cleanName, isLikelyName, namesMatch, findPerson } from '../../shared/nameMatch'
 import type { ScanProgress, ScanDebugItem, UnlinkedName, Clip } from '../../shared/types'
 
 // Reads the Discord overlay in the corner of each clip and tags the friends it names.
@@ -209,7 +209,7 @@ export async function startScan(mode: 'library' | 'test'): Promise<{ progress: S
       const unchanged = previous && previous.size === stats.size && previous.modified === stats.mtimeMs
       if ((mode === 'library' && unchanged) || isThumbnailGenerationPaused(clip.path)) {
         skipped++
-        if (previous?.names.length) clipsWithNames++
+        if (previous?.names.some(name => isLikelyName(cleanName(name)))) clipsWithNames++
         continue
       }
 
@@ -217,7 +217,7 @@ export async function startScan(mode: 'library' | 'test'): Promise<{ progress: S
       if (names === null) {
         failed++
       } else {
-        if (names.length > 0) clipsWithNames++
+        if (names.some(isLikelyName)) clipsWithNames++
         if (names.some(name => findPerson(people, name))) clipsTagged++
         saveScanResult({ path: clip.path, size: stats.size, modified: stats.mtimeMs, names, applied: previous?.applied ?? [] })
       }
@@ -243,18 +243,30 @@ export async function startScan(mode: 'library' | 'test'): Promise<{ progress: S
  */
 export function getUnlinkedNames(): UnlinkedName[] {
   const people = getPeople()
-  const ignored = new Set(getIgnoredNames().map(normalizeName))
-  const counts = new Map<string, UnlinkedName>()
+  const ignored = getIgnoredNames()
+  const groups = new Map<string, { names: Map<string, number>; clips: number }>()
   for (const result of Object.values(getScanResults())) {
-    for (const name of result.names) {
-      const normalized = normalizeName(name)
-      if (ignored.has(normalized) || findPerson(people, name)) continue
-      const entry = counts.get(normalized) ?? { name, clips: 0 }
-      entry.clips++
-      counts.set(normalized, entry)
+    const seenInClip = new Set<string>()
+    for (const raw of result.names) {
+      const name = cleanName(raw)
+      if (!isLikelyName(name) || findPerson(people, name)) continue
+      if (ignored.some(ignoredName => namesMatch(ignoredName, name))) continue
+      // Misreads of one name ("comp13x", "compi3x") share a group
+      const key = looseName(name)
+      const group = groups.get(key) ?? { names: new Map(), clips: 0 }
+      group.names.set(name, (group.names.get(name) ?? 0) + 1)
+      if (!seenInClip.has(key)) group.clips++
+      seenInClip.add(key)
+      groups.set(key, group)
     }
   }
-  return [...counts.values()].sort((a, b) => b.clips - a.clips || a.name.localeCompare(b.name))
+  return [...groups.values()]
+    .map(group => ({
+      // Show the spelling read most often
+      name: [...group.names.entries()].sort((a, b) => b[1] - a[1])[0][0],
+      clips: group.clips
+    }))
+    .sort((a, b) => b.clips - a.clips || a.name.localeCompare(b.name))
 }
 
 /**

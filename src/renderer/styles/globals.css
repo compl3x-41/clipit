@@ -3226,3 +3226,9 @@ button.clip-title:hover .clip-title-icon {
 .people-manage:hover {
   color: var(--accent);
 }
+
+.unlinked-more {
+  align-self: flex-start;
+  margin-top: 6px;
+  font-size: 12px;
+}
