@@ -1,26 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pencil } from 'lucide-react'
+import { splitFileName } from '../../shared/clipNames'
 
 interface ClipTitleProps {
   name: string
   // Resolves true when the rename worked, so the editor can close
   onRename: (newName: string) => Promise<boolean>
+  // Opens the rename box whenever this number changes
+  editRequest?: number
+  onClose?: (reason: 'saved' | 'unchanged' | 'cancelled') => void
+  // Shown under the box, e.g. that the rename waits for compressing
+  hint?: string
 }
 
-function splitName(name: string): [string, string] {
-  const dot = name.lastIndexOf('.')
-  return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
-}
+const splitName = splitFileName
 
 /**
  * The clip's file name; one click turns it into a rename box
  */
-export default function ClipTitle({ name, onRename }: ClipTitleProps) {
+export default function ClipTitle({ name, onRename, editRequest, onClose, hint }: ClipTitleProps) {
   const [base, ext] = splitName(name)
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(base)
   const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const cancelled = useRef(false)
 
   useEffect(() => {
     setEditing(false)
@@ -28,7 +32,12 @@ export default function ClipTitle({ name, onRename }: ClipTitleProps) {
   }, [name])
 
   useEffect(() => {
+    if (editRequest) setEditing(true)
+  }, [editRequest])
+
+  useEffect(() => {
     if (editing) {
+      cancelled.current = false
       inputRef.current?.focus()
       inputRef.current?.select()
     }
@@ -40,6 +49,7 @@ export default function ClipTitle({ name, onRename }: ClipTitleProps) {
     if (!trimmed || trimmed === base) {
       setEditing(false)
       setValue(base)
+      onClose?.('unchanged')
       return
     }
     setSaving(true)
@@ -47,6 +57,7 @@ export default function ClipTitle({ name, onRename }: ClipTitleProps) {
     setSaving(false)
     if (ok) {
       setEditing(false)
+      onClose?.('saved')
     } else {
       inputRef.current?.focus()
     }
@@ -66,13 +77,20 @@ export default function ClipTitle({ name, onRename }: ClipTitleProps) {
             e.stopPropagation()
             if (e.key === 'Enter') submit()
             if (e.key === 'Escape') {
+              cancelled.current = true
               setEditing(false)
               setValue(base)
+              onClose?.('cancelled')
             }
           }}
-          onBlur={submit}
+          onBlur={() => {
+            // Escape unmounts the box, which blurs it; that isn't a save
+            if (cancelled.current) cancelled.current = false
+            else submit()
+          }}
         />
         <span className="clip-title-ext">{ext}</span>
+        {hint && <span className="clip-title-hint">{hint}</span>}
       </div>
     )
   }

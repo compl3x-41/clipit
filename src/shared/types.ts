@@ -128,6 +128,8 @@ export interface CompressResult {
   deletedOriginal?: boolean
   cancelled?: boolean
   error?: string
+  // Set when a rename asked for during compression didn't work
+  renameError?: string
 }
 
 export interface CompressProgress {

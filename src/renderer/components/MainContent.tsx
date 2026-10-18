@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext'
 import Timeline from './Timeline'
 import CompressModal from './CompressModal'
 import ClipTitle from './ClipTitle'
+import { isRawRecordingName } from '../../shared/clipNames'
 import PeoplePicker from './PeoplePicker'
 import { formatUkDate, formatUkTime } from './ClipHoverCard'
 import { Play, Pause, Scissors, Share2, Trash2, Volume1, Volume2, VolumeX, Loader2, Maximize, Minimize, Minimize2, Gauge } from 'lucide-react'
@@ -11,7 +12,7 @@ import { useTheme } from '../theme'
 import { buildCompressRequest, loadCustomSettings, loadDeleteOriginal, loadPresetId, presetName, settingsForPreset } from '../compressPrefs'
 import { estimateSizeMb, probeForSection } from '../../shared/compress'
 import type { VideoProbe } from '../../shared/compress'
-import { enqueueCompress, isReplacingClip, onCompressFinished, useCompressQueue } from '../compressQueue'
+import { enqueueCompress, isReplacingClip, onCompressFinished, useCompressQueue, setPendingRename } from '../compressQueue'
 
 type ShareDestination = 'tunnel' | 'streamable'
 
@@ -39,7 +40,7 @@ const PLAYBACK_SPEEDS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5]
 const QUICK_SPEEDS = [1, 0.5, 0.25]
 
 export default function MainContent() {
-  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, people, addPerson, removePerson, setClipPeople, setShowFriendManager } = useApp()
+  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, selectNextClip, people, addPerson, removePerson, setClipPeople, setShowFriendManager } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
   const playerContainerRef = useRef<HTMLDivElement>(null)
 
@@ -383,6 +384,7 @@ export default function MainContent() {
 
   const compressJobs = useCompressQueue()
   const isClipBeingReplaced = !!selectedClip && isReplacingClip(compressJobs, selectedClip.path)
+  const pendingRename = selectedClip ? compressJobs.find(job => job.clip.path === selectedClip.path)?.renameTo : undefined
   const replaceJob = selectedClip ? compressJobs.find(job => job.clip.path === selectedClip.path && job.request.deleteOriginal) : undefined
 
   // In/out points moved away from the ends of the clip
@@ -433,14 +435,39 @@ export default function MainContent() {
       return
     }
     enqueueCompress(selectedClip, buildCompressRequest(selectedClip.path, quickCompress.settings, clipProbe, quickCompress.deleteOriginal, trimRange))
-  }, [selectedClip, compressJobs, clipProbe, quickCompress, trimRange, addToast])
+    // Name it while it compresses, or move on if it already has a name
+    if (isRawRecordingName(selectedClip.name)) {
+      autoRenamePath.current = selectedClip.path
+      setRenameRequest(n => n + 1)
+    } else {
+      selectNextClip()
+    }
+  }, [selectedClip, compressJobs, clipProbe, quickCompress, trimRange, addToast, selectNextClip])
+
+  // The rename box opened by C; finishing it moves on to the next clip
+  const autoRenamePath = useRef<string | null>(null)
+  const [renameRequest, setRenameRequest] = useState(0)
+  useEffect(() => {
+    if (selectedClip?.path !== autoRenamePath.current) autoRenamePath.current = null
+  }, [selectedClip?.path])
+  const handleTitleClose = useCallback((reason: 'saved' | 'unchanged' | 'cancelled') => {
+    if (!selectedClip || autoRenamePath.current !== selectedClip.path) return
+    autoRenamePath.current = null
+    if (reason !== 'cancelled') selectNextClip()
+  }, [selectedClip, selectNextClip])
 
   const handleRename = useCallback(async (newName: string): Promise<boolean> => {
     if (!selectedClip) return false
     // Compressing reads the file and writes next to it under its current name
+    // so the new name is applied once it's done
     if (compressJobs.some(job => job.clip.path === selectedClip.path)) {
-      addToast('Wait for this clip to finish compressing before renaming it', 'info')
-      return false
+      if (/[<>:"/\\|?*]/.test(newName)) {
+        addToast('A name can\'t contain < > : " / \\ | ? *', 'error')
+        return false
+      }
+      setPendingRename(selectedClip.path, newName)
+      addToast(`Will be renamed to "${newName}" when compressing finishes`, 'info')
+      return true
     }
     const result = await window.clipit.renameFile(selectedClip.path, newName)
     if (!result.success || !result.newPath) {
@@ -469,9 +496,14 @@ export default function MainContent() {
   selectedClipRef.current = selectedClip
   useEffect(() => {
     return onCompressFinished(async (job, result) => {
+      if (result.renameError) addToast(`Couldn't rename ${job.clip.name}: ${result.renameError}`, 'error')
       if (!result.success) {
         if (!result.cancelled) {
           addToast(`${job.clip.name}: ${result.error || 'Compression failed'}`, 'error')
+        }
+        if (job.renameTo) {
+          await refreshClips()
+          await refreshGames()
         }
         return
       }
@@ -636,17 +668,29 @@ export default function MainContent() {
     )
   }
 
+  const clipTitle = (
+    <ClipTitle
+      name={pendingRename ?? selectedClip.name}
+      onRename={handleRename}
+      // Only the clip C was pressed on; a fresh title on the next clip mustn't open
+      editRequest={autoRenamePath.current === selectedClip.path ? renameRequest : 0}
+      onClose={handleTitleClose}
+      hint={compressJobs.some(job => job.clip.path === selectedClip.path) ? 'Renamed once compressing finishes' : undefined}
+    />
+  )
+
   // The player has to let go of a clip that is being compressed in place
   if (isClipBeingReplaced && replaceJob) {
     return (
       <div className="main-content">
         <div className="player-container">
           <div className="no-selection compress-placeholder">
+            <div className="compress-placeholder-title">{clipTitle}</div>
             <Loader2 size={32} className="compress-spin" />
             <div>
               {replaceJob.status === 'running'
-                ? `Compressing ${selectedClip.name}... ${replaceJob.percent}%`
-                : `${selectedClip.name} is queued for compression`}
+                ? `Compressing... ${replaceJob.percent}%`
+                : 'Queued for compression'}
             </div>
             <div className="compress-placeholder-hint">The original is being replaced, so it can't be played until it's done. Other clips work as normal.</div>
           </div>
@@ -793,7 +837,7 @@ export default function MainContent() {
 
       <div className="controls">
         <div className="clip-title-row">
-          <ClipTitle name={selectedClip.name} onRename={handleRename} />
+          {clipTitle}
           <div className="clip-title-meta">
             <span>{formatUkDate(selectedClip.modified)}</span>
             <span>{formatUkTime(selectedClip.modified)}</span>

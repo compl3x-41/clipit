@@ -137,6 +137,7 @@ interface AppContextType {
   undoDelete: (id: number) => void
   // Set to a clip's path to start it playing as soon as it loads
   autoPlayPath: string | null
+  selectNextClip: () => void
   clearAutoPlay: () => void
 
   // Toasts
@@ -446,6 +447,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [clips, filter, sort, hiddenPaths, personFilter, search]
   )
 
+  // Move to the clip below the current one and play it, as after a delete
+  const selectNextClip = useCallback(() => {
+    const list = visibleClips(clips, hiddenPaths, filter, sort, personFilter, search)
+    const index = selectedClip ? list.findIndex(c => c.path === selectedClip.path) : -1
+    const next = list[index + 1]
+    if (!next) return
+    setSelectedClip(next)
+    setSelectedClips([next])
+    setLastSelectedIndex(index + 1)
+    if (next.type === 'video') setAutoPlayPath(next.path)
+  }, [clips, hiddenPaths, filter, sort, personFilter, search, selectedClip])
+
   const selectClip = useCallback((clip: Clip | null, isMulti = false, isRange = false) => {
     if (!clip) {
       // Clear all selection
@@ -719,6 +732,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     deleteClips,
     undoDelete,
     autoPlayPath,
+    selectNextClip,
     clearAutoPlay,
     toasts,
     addToast,

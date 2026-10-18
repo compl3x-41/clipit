@@ -3270,3 +3270,20 @@ button.clip-title:hover .clip-title-icon {
 .unlinked-new .form-input {
   width: 140px;
 }
+
+.clip-title-hint {
+  flex: none;
+  margin-left: 10px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.compress-placeholder-title {
+  display: flex;
+  justify-content: center;
+  max-width: 90%;
+  margin-bottom: 8px;
+  font-size: 18px;
+}

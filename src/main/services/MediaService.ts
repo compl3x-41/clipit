@@ -7,13 +7,11 @@ import { readMp4Duration } from '../utils/mp4Duration'
 import { getVideoDuration, getVideoCodec, getImageDimensions } from './FFmpegService'
 import { VIDEO_EXTENSIONS, IMAGE_EXTENSIONS } from '../../shared/types'
 import type { Game, Clip, ClipInfo } from '../../shared/types'
+import { isRawRecordingName } from '../../shared/clipNames'
 
-// ShadowPlay's own names, e.g. "WARDOGS 2026.10.16 - 02.16.04.26.DVR.mp4".
-// A clip whose name no longer looks like this has been renamed, so counts as handled.
-const RAW_RECORDING_NAME = /^.+?\s(?:-\s)?\d{4}\.\d{2}\.\d{2}\s-\s\d{2}\.\d{2}\.\d{2}(?:\.\d{2})?(?:\.DVR)?\.[^.]+$/i
-
+// A clip that has been edited, or renamed from its ShadowPlay name, counts as handled
 function isHandled(fullPath: string, name: string): boolean {
-  return isEdited(fullPath) || !RAW_RECORDING_NAME.test(name)
+  return isEdited(fullPath) || !isRawRecordingName(name)
 }
 
 // Recordings come out of ShadowPlay well above this, and Clipit's compress presets
