@@ -1,10 +1,14 @@
 name: Release
 
-# Push a tag like v1.4.1 to build the Windows installer and publish it as a GitHub release
+# Builds the Windows installer and publishes it as a GitHub release whenever main
+# carries a package.json version that hasn't been released yet
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,19 +19,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check for an existing release
+        id: check
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v$version is already released"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.skip != 'true'
         with:
           node-version: 22
           cache: npm
 
       - run: npm ci
+        if: steps.check.outputs.skip != 'true'
 
       - name: Download bundled tools
+        if: steps.check.outputs.skip != 'true'
         run: |
           npm run download-ffmpeg -- --win
           npm run download-cloudflared -- --win
 
       - name: Build and publish
+        if: steps.check.outputs.skip != 'true'
         run: npm run publish:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
