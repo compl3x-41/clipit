@@ -5,7 +5,7 @@ import CompressModal from './CompressModal'
 import ClipTitle from './ClipTitle'
 import PeoplePicker from './PeoplePicker'
 import { formatUkDate, formatUkTime } from './ClipHoverCard'
-import { Play, Pause, Scissors, Share2, Trash2, Volume1, Volume2, VolumeX, Loader2, Maximize, Minimize, Minimize2 } from 'lucide-react'
+import { Play, Pause, Scissors, Share2, Trash2, Volume1, Volume2, VolumeX, Loader2, Maximize, Minimize, Minimize2, Gauge } from 'lucide-react'
 import type { CompressRequest, Person } from '../../shared/types'
 import { useTheme } from '../theme'
 import { buildCompressRequest, loadCustomSettings, loadDeleteOriginal, loadPresetId, presetName, settingsForPreset } from '../compressPrefs'
@@ -33,8 +33,10 @@ const SHORTCUTS: [string, string][] = [
   ['⇧C', 'Options']
 ]
 
-// S cycles through these
-const PLAYBACK_SPEEDS = [1, 0.5, 0.25]
+// Choices in the speed menu
+const PLAYBACK_SPEEDS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5]
+// S cycles through these slow-motion speeds
+const QUICK_SPEEDS = [1, 0.5, 0.25]
 
 export default function MainContent() {
   const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, people, addPerson, removePerson, setClipPeople } = useApp()
@@ -55,6 +57,8 @@ export default function MainContent() {
   const theme = useTheme()
   const [isMuted, setIsMuted] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false)
+  const speedMenuRef = useRef<HTMLDivElement>(null)
   const [volume, setVolume] = useState(1)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isVideoLoading, setIsVideoLoading] = useState(false)
@@ -152,8 +156,20 @@ export default function MainContent() {
     videoRef.current.playbackRate = playbackSpeed
   }, [playbackSpeed, selectedClip?.path])
 
+  useEffect(() => {
+    if (!showSpeedMenu) return
+    const close = (e: MouseEvent) => {
+      if (!speedMenuRef.current?.contains(e.target as Node)) setShowSpeedMenu(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [showSpeedMenu])
+
   const handleCycleSpeed = useCallback(() => {
-    setPlaybackSpeed(speed => PLAYBACK_SPEEDS[(PLAYBACK_SPEEDS.indexOf(speed) + 1) % PLAYBACK_SPEEDS.length])
+    setPlaybackSpeed(speed => {
+      const index = QUICK_SPEEDS.indexOf(speed)
+      return index === -1 ? 1 : QUICK_SPEEDS[(index + 1) % QUICK_SPEEDS.length]
+    })
   }, [])
 
   const handleLoadedMetadata = useCallback(() => {
@@ -641,6 +657,41 @@ export default function MainContent() {
 
   const isVideo = selectedClip.type === 'video'
 
+  // Next to the volume, with a menu of speeds that opens upwards
+  const speedControl = (
+    <div className="speed-control" ref={speedMenuRef}>
+      <button
+        className={`speed-toggle ${playbackSpeed !== 1 ? 'changed' : ''}`}
+        title="Playback speed (S cycles 1x, 0.5x, 0.25x)"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation()
+          setShowSpeedMenu(!showSpeedMenu)
+        }}
+      >
+        <Gauge size={16} />
+        {playbackSpeed}x
+      </button>
+      {showSpeedMenu && (
+        <div className="speed-menu" onClick={(e) => e.stopPropagation()}>
+          {PLAYBACK_SPEEDS.map(speed => (
+            <button
+              key={speed}
+              className={speed === playbackSpeed ? 'active' : ''}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setPlaybackSpeed(speed)
+                setShowSpeedMenu(false)
+              }}
+            >
+              {speed}x
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
   // Sits in the button row normally, and over the video in fullscreen
   const volumeControl = (
     <div className="volume-control">
@@ -668,17 +719,6 @@ export default function MainContent() {
         // Drop focus so Space, M, I, O etc. keep working after dragging
         onMouseUp={(e) => e.currentTarget.blur()}
       />
-      <button
-        className={`speed-toggle ${playbackSpeed !== 1 ? 'slowed' : ''}`}
-        title="Playback speed (S)"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => {
-          e.stopPropagation()
-          handleCycleSpeed()
-        }}
-      >
-        {playbackSpeed}x
-      </button>
     </div>
   )
 
@@ -723,7 +763,7 @@ export default function MainContent() {
                   {formatTime(currentTime)} / {formatTime(duration)}
                 </div>
                 <div className="player-top-controls">
-                  {isFullscreen && volumeControl}
+                  {isFullscreen && <div className="fullscreen-audio">{volumeControl}{speedControl}</div>}
                   <div
                     className="fullscreen-toggle"
                     title={isFullscreen ? 'Exit Fullscreen (F or Esc)' : 'Fullscreen (F or double-click)'}
@@ -900,6 +940,7 @@ export default function MainContent() {
           </button>
 
           {isVideo && volumeControl}
+          {isVideo && speedControl}
 
           {isVideo && (
             <div className="shortcuts-hint">

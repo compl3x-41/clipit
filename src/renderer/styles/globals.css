@@ -2782,26 +2782,98 @@ button.clip-title:hover .clip-title-icon {
   color: var(--text-primary);
 }
 
-/* Playback speed, cycles with S */
+/* Playback speed: its own pill right of the volume, menu opens upwards */
+.speed-control {
+  position: relative;
+  display: flex;
+}
+
 .speed-toggle {
-  min-width: 42px;
-  margin-left: 8px;
-  padding: 3px 6px;
-  border: 1px solid var(--border-light);
-  border-radius: 5px;
-  background: transparent;
-  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 70px;
+  justify-content: center;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .speed-toggle:hover {
-  color: var(--text-primary);
+  border-color: var(--border-light);
 }
 
-.speed-toggle.slowed {
+.speed-toggle.changed {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+[data-theme="medal"] .speed-toggle {
+  border-color: transparent;
+  border-radius: 8px;
+}
+
+[data-theme="medal"] .speed-toggle.changed {
+  border-color: var(--accent);
+}
+
+.speed-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  width: 140px;
+  padding: 6px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.speed-menu button {
+  padding: 6px 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.speed-menu button:hover {
+  background: var(--bg-tertiary);
+}
+
+.speed-menu button.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: 700;
+}
+
+/* In fullscreen the controls sit at the top, so open downwards */
+.player-top-controls .speed-menu {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+.fullscreen-audio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-top-controls .speed-toggle {
+  background: rgba(0, 0, 0, 0.8);
+  border-color: transparent;
 }
