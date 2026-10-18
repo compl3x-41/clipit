@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
-import { Folder, FolderOpen, Film, Cpu, X, Save, Trash2, User } from 'lucide-react'
+import { Folder, FolderOpen, Film, Cpu, X, Save, Trash2, User, Palette } from 'lucide-react'
+import { THEMES, setTheme, useTheme, type Theme } from '../theme'
 
 export default function SettingsModal() {
   const { settings, updateSettings, pickDirectory, setShowSettings, encoders, detectEncoders, addToast } = useApp()
@@ -16,6 +17,7 @@ export default function SettingsModal() {
   const [preferredEncoder, setPreferredEncoder] = useState(settings?.preferredEncoder || 'auto')
   const [streamableUsername, setStreamableUsername] = useState(settings?.streamableUsername || '')
   const [streamablePassword, setStreamablePassword] = useState(settings?.streamablePassword || '')
+  const theme = useTheme()
 
   useEffect(() => {
     if (encoders.length === 0) {
@@ -72,6 +74,28 @@ export default function SettingsModal() {
         </div>
 
         <div className="modal-content">
+          <div className="modal-section">
+            <h3 className="modal-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Palette size={16} />
+              <span>Appearance</span>
+            </h3>
+            <div className="form-group">
+              <label className="form-label">Theme</label>
+              <select
+                className="form-select"
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as Theme)}
+              >
+                {THEMES.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}: {t.description}</option>
+                ))}
+              </select>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                Changes straight away. You can drag the edge of the clip list to make it wider.
+              </p>
+            </div>
+          </div>
+
           <div className="modal-section">
           <h3 className="modal-section-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Folder size={16} />

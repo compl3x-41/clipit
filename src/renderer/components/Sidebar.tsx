@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
+import { getCompressJobs } from '../compressQueue'
+import ClipHoverCard, { formatUkDate, formatUkTime } from './ClipHoverCard'
 import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
 import type { Clip } from '../../shared/types'
 
@@ -27,7 +29,8 @@ export default function Sidebar() {
     settings,
     refreshClips,
     refreshGames,
-    addToast
+    addToast,
+    deleteClips
   } = useApp()
 
   // Tunnel state
@@ -47,6 +50,28 @@ export default function Sidebar() {
 
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // Hover card with full clip details, shown after a short pause
+  const [hoverCard, setHoverCard] = useState<{ clip: Clip; top: number; left: number } | null>(null)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const handleClipHover = (clip: Clip, target: HTMLElement) => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => {
+      const rect = target.getBoundingClientRect()
+      const sidebarRight = target.closest('.sidebar')?.getBoundingClientRect().right ?? rect.right
+      setHoverCard({ clip, top: rect.top, left: sidebarRight + 8 })
+    }, 450)
+  }
+
+  const handleClipHoverEnd = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setHoverCard(null)
+  }
+
+  useEffect(() => () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+  }, [])
 
   // Load tunnel info and app version on mount
   useEffect(() => {
@@ -125,6 +150,10 @@ export default function Sidebar() {
 
   const handleRenameSubmit = async () => {
     if (!renameClip || !renameValue.trim()) return
+    if (getCompressJobs().some(job => job.clip.path === renameClip.path)) {
+      addToast('Wait for this clip to finish compressing before renaming it', 'info')
+      return
+    }
 
     const result = await window.clipit.renameFile(renameClip.path, renameValue.trim())
     if (result.success) {
@@ -147,36 +176,12 @@ export default function Sidebar() {
     setRenameValue('')
   }
 
-  const handleDeleteFromContext = async () => {
+  const handleDeleteFromContext = () => {
     if (!contextMenu) return
     setContextMenu(null)
 
     const filesToDelete = selectedClips.length > 1 ? selectedClips : [contextMenu.clip]
-    const fileNames = filesToDelete.length === 1
-      ? filesToDelete[0].name
-      : `${filesToDelete.length} files`
-
-    if (!confirm(`Delete ${fileNames}?`)) return
-
-    let successCount = 0
-    let errorCount = 0
-
-    for (const clip of filesToDelete) {
-      const result = await window.clipit.deleteFile(clip.path)
-      if (result.success) {
-        successCount++
-      } else {
-        errorCount++
-        addToast(result.error || `Failed to delete ${clip.name}`, 'error')
-      }
-    }
-
-    if (successCount > 0) {
-      addToast(`${successCount} file${successCount > 1 ? 's' : ''} deleted`, 'success')
-      clearSelection()
-      await refreshClips()
-      await refreshGames()
-    }
+    deleteClips(filesToDelete)
   }
 
   // Close context menu on click outside
@@ -196,34 +201,9 @@ export default function Sidebar() {
     }
   }, [renameClip])
 
-  const handleDeleteSelected = async () => {
+  const handleDeleteSelected = () => {
     if (selectedClips.length === 0) return
-
-    const fileNames = selectedClips.length === 1
-      ? selectedClips[0].name
-      : `${selectedClips.length} files`
-
-    if (!confirm(`Delete ${fileNames}?`)) return
-
-    let successCount = 0
-    let errorCount = 0
-
-    for (const clip of selectedClips) {
-      const result = await window.clipit.deleteFile(clip.path)
-      if (result.success) {
-        successCount++
-      } else {
-        errorCount++
-        addToast(result.error || `Failed to delete ${clip.name}`, 'error')
-      }
-    }
-
-    if (successCount > 0) {
-      addToast(`${successCount} file${successCount > 1 ? 's' : ''} deleted`, 'success')
-      clearSelection()
-      await refreshClips()
-      await refreshGames()
-    }
+    deleteClips(selectedClips)
   }
 
   // Mouse button 4/5 support for back/forward navigation
@@ -402,7 +382,7 @@ export default function Sidebar() {
       )}
 
       <div
-        className="sidebar-content"
+        className={`sidebar-content ${selectedGame ? 'clips-view' : ''}`}
         onClick={(e) => {
           // Clear selection when clicking empty space
           if (e.target === e.currentTarget) {
@@ -418,8 +398,11 @@ export default function Sidebar() {
             return (
               <div
                 key={clip.path}
-                className={`list-item ${isSelected ? 'selected' : ''} ${isRenaming ? 'renaming' : ''}`}
+                className={`list-item ${isSelected ? 'selected' : ''} ${isRenaming ? 'renaming' : ''} ${clip.type === 'video' && !clip.edited ? 'unedited' : ''}`}
+                onMouseEnter={(e) => handleClipHover(clip, e.currentTarget)}
+                onMouseLeave={handleClipHoverEnd}
                 onClick={(e) => {
+                  handleClipHoverEnd()
                   if (isRenaming) return
                   const isCtrl = e.ctrlKey || e.metaKey
                   const isShift = e.shiftKey
@@ -438,6 +421,10 @@ export default function Sidebar() {
                       (e.target as HTMLImageElement).style.visibility = 'hidden'
                     }}
                   />
+                  <div className="list-item-date" title={clip.edited ? 'Edited or renamed' : 'Not edited yet'}>
+                    <span>{formatUkTime(clip.modified)}</span>
+                    <span>{formatUkDate(clip.modified)}</span>
+                  </div>
                   <div className="list-item-type-badge">
                     {clip.type === 'video' ? (
                       <Video size={12} />
@@ -467,7 +454,7 @@ export default function Sidebar() {
                     <>
                       <div className="list-item-name">{clip.name}</div>
                       <div className="list-item-meta">
-                        {clip.sizeMb} MB • {clip.modifiedStr}
+                        {clip.sizeMb} MB • {formatUkDate(clip.modified)} {formatUkTime(clip.modified)}
                       </div>
                     </>
                   )}
@@ -614,6 +601,10 @@ export default function Sidebar() {
           </span>
         </button>
       </div>
+
+      {hoverCard && !contextMenu && !renameClip && (
+        <ClipHoverCard clip={hoverCard.clip} top={hoverCard.top} left={hoverCard.left} />
+      )}
 
       {/* Context Menu */}
       {contextMenu && (

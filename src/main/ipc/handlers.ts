@@ -2,12 +2,14 @@ import { ipcMain, dialog, clipboard, shell, app } from 'electron'
 import { settingsStore } from '../store/SettingsStore'
 import { getGames, getClips, getClipInfo } from '../services/MediaService'
 import { trimVideo } from '../services/TrimService'
+import { compressVideo, cancelCompress, probeVideo } from '../services/CompressService'
+import { getFilmstrip } from '../services/FilmstripService'
 import { shareMedia } from '../services/ShareService'
-import { deleteFile, renameFile, showInExplorer } from '../services/FileService'
+import { deleteFile, renameFile, showInExplorer, setPendingDeletes } from '../services/FileService'
 import { detectAvailableEncoders } from '../services/FFmpegService'
 import { tunnelService } from '../services/TunnelService'
 import { updateService } from '../services/UpdateService'
-import type { ShareRequest, Settings } from '../../shared/types'
+import type { ShareRequest, Settings, CompressRequest } from '../../shared/types'
 
 export function registerIpcHandlers() {
   // Media operations
@@ -28,6 +30,27 @@ export function registerIpcHandlers() {
     return trimVideo(args.path, args.start, args.end, args.saveAsCopy || false)
   })
 
+  ipcMain.handle('clipit:media:filmstrip', async (_, args: { path: string; count: number }) => {
+    return getFilmstrip(args.path, args.count)
+  })
+
+  // Compress operations
+  ipcMain.handle('clipit:compress:probe', async (_, args: { path: string }) => {
+    return probeVideo(args.path)
+  })
+
+  ipcMain.handle('clipit:compress:execute', async (event, request: CompressRequest) => {
+    return compressVideo(request, (progress) => {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('compress-progress', progress)
+      }
+    })
+  })
+
+  ipcMain.handle('clipit:compress:cancel', async () => {
+    cancelCompress()
+  })
+
   // Share operations
   ipcMain.handle('clipit:share:execute', async (_, request: ShareRequest) => {
     return shareMedia(request)
@@ -36,6 +59,10 @@ export function registerIpcHandlers() {
   // File operations
   ipcMain.handle('clipit:file:delete', async (_, args: { path: string }) => {
     return deleteFile(args.path)
+  })
+
+  ipcMain.on('clipit:file:set-pending-deletes', (_, paths: string[]) => {
+    setPendingDeletes(Array.isArray(paths) ? paths.filter(p => typeof p === 'string') : [])
   })
 
   ipcMain.handle('clipit:file:rename', async (_, args: { path: string; newName: string }) => {

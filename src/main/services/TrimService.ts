@@ -4,6 +4,8 @@ import { spawn } from 'child_process'
 import { getFFmpegPath, ffmpegExists } from '../utils/ffmpegBinary'
 import { deleteThumbnailCache } from './ThumbnailService'
 import { atomicFileReplace, safeUnlink } from '../utils/safeFileOps'
+import { readFileTimes, applyFileTimes } from '../utils/fileTimes'
+import { markEdited } from '../store/EditStore'
 import type { TrimResult } from '../../shared/types'
 
 /**
@@ -24,6 +26,7 @@ export async function trimVideo(
   }
 
   const parsed = path.parse(sourcePath)
+  const sourceTimes = readFileTimes(sourcePath)
 
   let outputPath: string
   if (saveAsCopy) {
@@ -83,6 +86,9 @@ export async function trimVideo(
           // Delete cached thumbnail (original video content changed)
           deleteThumbnailCache(sourcePath)
         }
+
+        await applyFileTimes(finalPath, sourceTimes)
+        markEdited(finalPath)
 
         const stats = fs.statSync(finalPath)
         resolve({

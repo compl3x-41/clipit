@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Settings, ShareRequest, Game, Clip, ClipInfo, TrimResult, ShareResult, EncoderInfo, UploadProgress } from '../shared/types'
+import type { Settings, ShareRequest, Game, Clip, ClipInfo, TrimResult, ShareResult, EncoderInfo, UploadProgress, CompressRequest, CompressResult, CompressProgress } from '../shared/types'
+import type { VideoProbe } from '../shared/compress'
 
 contextBridge.exposeInMainWorld('clipit', {
   getGames: (): Promise<Game[]> =>
@@ -29,11 +30,32 @@ contextBridge.exposeInMainWorld('clipit', {
   trim: (path: string, start: number, end: number, saveAsCopy?: boolean): Promise<TrimResult> =>
     ipcRenderer.invoke('clipit:trim:execute', { path, start, end, saveAsCopy }),
 
+  probeVideo: (path: string): Promise<VideoProbe | null> =>
+    ipcRenderer.invoke('clipit:compress:probe', { path }),
+
+  compress: (request: CompressRequest): Promise<CompressResult> =>
+    ipcRenderer.invoke('clipit:compress:execute', request),
+
+  cancelCompress: (): Promise<void> =>
+    ipcRenderer.invoke('clipit:compress:cancel'),
+
+  onCompressProgress: (callback: (progress: CompressProgress) => void) => {
+    const handler = (_: any, progress: any) => callback(progress)
+    ipcRenderer.on('compress-progress', handler)
+    return () => ipcRenderer.removeListener('compress-progress', handler)
+  },
+
   share: (request: ShareRequest): Promise<ShareResult> =>
     ipcRenderer.invoke('clipit:share:execute', request),
 
   deleteFile: (path: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('clipit:file:delete', { path }),
+
+  getFilmstrip: (path: string, count: number): Promise<string[]> =>
+    ipcRenderer.invoke('clipit:media:filmstrip', { path, count }),
+
+  setPendingDeletes: (paths: string[]): void =>
+    ipcRenderer.send('clipit:file:set-pending-deletes', paths),
 
   renameFile: (path: string, newName: string): Promise<{ success: boolean; error?: string; newPath?: string }> =>
     ipcRenderer.invoke('clipit:file:rename', { path, newName }),
@@ -141,8 +163,14 @@ declare global {
       getImageUrl: (path: string) => string
       getThumbnailUrl: (path: string, time?: number) => string
       trim: (path: string, start: number, end: number, saveAsCopy?: boolean) => Promise<TrimResult>
+      probeVideo: (path: string) => Promise<VideoProbe | null>
+      compress: (request: CompressRequest) => Promise<CompressResult>
+      cancelCompress: () => Promise<void>
+      onCompressProgress: (callback: (progress: CompressProgress) => void) => () => void
       share: (request: ShareRequest) => Promise<ShareResult>
       deleteFile: (path: string) => Promise<{ success: boolean; error?: string }>
+      setPendingDeletes: (paths: string[]) => void
+      getFilmstrip: (path: string, count: number) => Promise<string[]>
       renameFile: (path: string, newName: string) => Promise<{ success: boolean; error?: string; newPath?: string }>
       showInExplorer: (path: string) => Promise<{ success: boolean; error?: string }>
       getSettings: () => Promise<Settings>

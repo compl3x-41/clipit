@@ -1,13 +1,40 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useApp } from '../context/AppContext'
 import Timeline from './Timeline'
-import { Play, Pause, RotateCcw, Scissors, Share2, Trash2, Volume2, VolumeX, Loader2 } from 'lucide-react'
+import CompressModal from './CompressModal'
+import ClipTitle from './ClipTitle'
+import { formatUkDate, formatUkTime } from './ClipHoverCard'
+import { Play, Pause, Scissors, Share2, Trash2, Volume1, Volume2, VolumeX, Loader2, Maximize, Minimize, Minimize2 } from 'lucide-react'
+import type { CompressRequest } from '../../shared/types'
+import { useTheme } from '../theme'
+import { buildCompressRequest, loadCustomSettings, loadDeleteOriginal, loadPresetId, presetName, settingsForPreset } from '../compressPrefs'
+import { estimateSizeMb, probeForSection } from '../../shared/compress'
+import type { VideoProbe } from '../../shared/compress'
+import { enqueueCompress, isReplacingClip, onCompressFinished, useCompressQueue } from '../compressQueue'
 
 type ShareDestination = 'tunnel' | 'streamable'
 
+// Used for frame stepping until the clip's real frame rate has been probed
+const DEFAULT_FRAME_RATE = 60
+const FILMSTRIP_FRAMES = 20
+// How far the left/right arrow keys jump
+const SKIP_SECONDS = 5
+
+const SHORTCUTS: [string, string][] = [
+  ['←→', `${SKIP_SECONDS}s`],
+  ['< >', 'Frame'],
+  ['↑↓', 'Vol'],
+  ['M', 'Mute'],
+  ['F', 'Full'],
+  ['I O', 'In/Out'],
+  ['R', 'Reset'],
+  ['⇧C', 'Options']
+]
+
 export default function MainContent() {
-  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings } = useApp()
+  const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay } = useApp()
   const videoRef = useRef<HTMLVideoElement>(null)
+  const playerContainerRef = useRef<HTMLDivElement>(null)
 
   // Trim state
   const [trimStart, setTrimStart] = useState(0)
@@ -15,7 +42,15 @@ export default function MainContent() {
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
+  const [frameRate, setFrameRate] = useState(DEFAULT_FRAME_RATE)
+  const [clipProbe, setClipProbe] = useState<VideoProbe | null>(null)
+  // Bumped when the compress dialog closes so the button picks up new settings
+  const [compressPrefsVersion, setCompressPrefsVersion] = useState(0)
+  const [filmstrip, setFilmstrip] = useState<string[] | undefined>(undefined)
+  const theme = useTheme()
   const [isMuted, setIsMuted] = useState(false)
+  const [volume, setVolume] = useState(1)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const [isVideoLoading, setIsVideoLoading] = useState(false)
   const [saveAsCopy, setSaveAsCopy] = useState(true)
   const [showSaveDropdown, setShowSaveDropdown] = useState(false)
@@ -23,6 +58,7 @@ export default function MainContent() {
   const [shareDestination, setShareDestination] = useState<ShareDestination>('tunnel')
   const [showShareDropdown, setShowShareDropdown] = useState(false)
   const shareDropdownRef = useRef<HTMLDivElement>(null)
+  const [showCompress, setShowCompress] = useState(false)
 
   useEffect(() => {
     const saved = localStorage.getItem('clipit:saveAsCopy')
@@ -33,6 +69,25 @@ export default function MainContent() {
     if (savedDest === 'tunnel' || savedDest === 'streamable') {
       setShareDestination(savedDest)
     }
+    const savedVolume = parseFloat(localStorage.getItem('clipit:volume') ?? '')
+    if (!isNaN(savedVolume)) {
+      setVolume(Math.max(0, Math.min(1, savedVolume)))
+    }
+  }, [])
+
+  // Keep the element's volume in sync (the video element remounts when switching from an image)
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume
+    }
+  }, [volume, selectedClip])
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(document.fullscreenElement !== null && document.fullscreenElement === playerContainerRef.current)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
   }, [])
 
   useEffect(() => {
@@ -51,19 +106,56 @@ export default function MainContent() {
     }
   }, [selectedClip])
 
+  // The Medal-style timeline shows frames from the clip
+  useEffect(() => {
+    setFilmstrip(undefined)
+    if (theme !== 'medal' || selectedClip?.type !== 'video') return
+    let cancelled = false
+    window.clipit.getFilmstrip(selectedClip.path, FILMSTRIP_FRAMES).then((frames) => {
+      if (!cancelled) setFilmstrip(frames.map(f => f ? window.clipit.getImageUrl(f) : ''))
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedClip, theme])
+
+  useEffect(() => {
+    setFrameRate(DEFAULT_FRAME_RATE)
+    setClipProbe(null)
+    if (selectedClip?.type !== 'video') return
+    let cancelled = false
+    window.clipit.probeVideo(selectedClip.path).then((probe) => {
+      if (cancelled) return
+      setClipProbe(probe && probe.duration > 0 ? probe : null)
+      if (probe && probe.fps > 0) setFrameRate(probe.fps)
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedClip])
+
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
       setCurrentTime(videoRef.current.currentTime)
     }
   }, [])
 
+  // Playback position to return to after the clip is reloaded under a new name
+  const restoreTimeRef = useRef<number | null>(null)
+
   const handleLoadedMetadata = useCallback(() => {
     if (videoRef.current) {
       setDuration(videoRef.current.duration)
       setTrimEnd(videoRef.current.duration)
       setIsVideoLoading(false)
+      if (restoreTimeRef.current !== null) {
+        videoRef.current.currentTime = restoreTimeRef.current
+        setCurrentTime(restoreTimeRef.current)
+        restoreTimeRef.current = null
+      }
+      // The clip below a deleted one starts playing right away
+      if (autoPlayPath && autoPlayPath === selectedClip?.path) {
+        clearAutoPlay()
+        videoRef.current.play().catch(() => {})
+      }
     }
-  }, [])
+  }, [autoPlayPath, selectedClip, clearAutoPlay])
 
   const handlePlayPause = useCallback(() => {
     if (videoRef.current) {
@@ -83,6 +175,29 @@ export default function MainContent() {
       setCurrentTime(time)
     }
   }, [])
+
+  const handleStepFrame = useCallback((direction: 1 | -1) => {
+    const video = videoRef.current
+    if (!video) return
+    if (!video.paused) {
+      video.pause()
+      setIsPlaying(false)
+    }
+    const max = Number.isFinite(video.duration) ? video.duration : duration
+    const time = Math.min(Math.max(video.currentTime + direction / frameRate, 0), max)
+    video.currentTime = time
+    setCurrentTime(time)
+  }, [duration, frameRate])
+
+  // Jump without changing play/pause
+  const handleSkip = useCallback((seconds: number) => {
+    const video = videoRef.current
+    if (!video) return
+    const max = Number.isFinite(video.duration) ? video.duration : duration
+    const time = Math.min(Math.max(video.currentTime + seconds, 0), max)
+    video.currentTime = time
+    setCurrentTime(time)
+  }, [duration])
 
   const handleResetTrim = useCallback(() => {
     setTrimStart(0)
@@ -107,6 +222,27 @@ export default function MainContent() {
       setIsMuted(!isMuted)
     }
   }, [isMuted])
+
+  const handleVolumeChange = useCallback((value: number) => {
+    const clamped = Math.max(0, Math.min(1, value))
+    setVolume(clamped)
+    localStorage.setItem('clipit:volume', String(clamped))
+    // Moving the slider up while muted should bring the audio back
+    if (clamped > 0 && isMuted) {
+      setIsMuted(false)
+      if (videoRef.current) videoRef.current.muted = false
+    }
+  }, [isMuted])
+
+  const handleToggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      playerContainerRef.current?.requestFullscreen().catch((error) => {
+        console.error('[Video Player] Fullscreen request failed:', error)
+      })
+    }
+  }, [])
 
   const handleSetTrimStart = useCallback((time: number) => {
     setTrimStart(time)
@@ -211,36 +347,130 @@ export default function MainContent() {
     }
   }, [selectedClip, shareDestination, setLoading, addToast])
 
-  const handleDelete = useCallback(async () => {
-    if (!selectedClip) return
+  const compressJobs = useCompressQueue()
+  const isClipBeingReplaced = !!selectedClip && isReplacingClip(compressJobs, selectedClip.path)
+  const replaceJob = selectedClip ? compressJobs.find(job => job.clip.path === selectedClip.path && job.request.deleteOriginal) : undefined
 
-    if (!confirm(`Delete ${selectedClip.name}?`)) return
+  // In/out points moved away from the ends of the clip
+  const hasTrim = duration > 0 && (trimStart > 0.01 || trimEnd < duration - 0.01)
 
-    setLoading(true, 'Deleting...')
-
-    try {
-      const result = await window.clipit.deleteFile(selectedClip.path)
-
-      if (result.success) {
-        addToast('Deleted', 'success')
-        // Clear selection before refreshing clips to avoid showing deleted file
-        selectClip(null)
-        await refreshClips()
-        await refreshGames() // Update game counts
-      } else {
-        addToast(result.error || 'Delete failed', 'error')
-      }
-    } catch (error) {
-      addToast('Delete failed', 'error')
-    } finally {
-      setLoading(false)
+  const handleOpenCompress = useCallback(() => {
+    if (!selectedClip || selectedClip.type !== 'video') return
+    if (compressJobs.some(job => job.clip.path === selectedClip.path)) {
+      addToast('This clip is already being compressed', 'info')
+      return
     }
-  }, [selectedClip, setLoading, addToast, selectClip, refreshClips, refreshGames])
+    videoRef.current?.pause()
+    // The dialog is not part of the fullscreen element, so leave fullscreen first
+    if (document.fullscreenElement) document.exitFullscreen()
+    setShowCompress(true)
+  }, [selectedClip, compressJobs, addToast])
+
+  const trimRange = hasTrim ? { start: trimStart, end: trimEnd } : undefined
+
+  // What the one-click button will do, using the settings last picked in the dialog
+  const quickCompress = useMemo(() => {
+    if (!clipProbe) return null
+    const presetId = loadPresetId()
+    const settings = settingsForPreset(presetId, loadCustomSettings())
+    const section = probeForSection(clipProbe, trimRange?.start, trimRange?.end)
+    const beforeMb = Math.round(section.sizeBytes / (1024 * 1024) * 10) / 10
+    const afterMb = estimateSizeMb(settings, section)
+    return {
+      settings,
+      presetName: presetName(presetId),
+      deleteOriginal: loadDeleteOriginal(),
+      beforeMb,
+      afterMb,
+      savedPercent: beforeMb > 0 ? Math.round((1 - afterMb / beforeMb) * 100) : 0
+    }
+    // compressPrefsVersion re-reads the saved settings after the dialog closes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipProbe, trimRange?.start, trimRange?.end, compressPrefsVersion])
+
+  const handleQuickCompress = useCallback(() => {
+    if (!selectedClip || selectedClip.type !== 'video') return
+    if (compressJobs.some(job => job.clip.path === selectedClip.path)) {
+      addToast('This clip is already being compressed', 'info')
+      return
+    }
+    if (!clipProbe || !quickCompress) {
+      addToast('Still reading the clip, try again in a moment', 'info')
+      return
+    }
+    enqueueCompress(selectedClip, buildCompressRequest(selectedClip.path, quickCompress.settings, clipProbe, quickCompress.deleteOriginal, trimRange))
+  }, [selectedClip, compressJobs, clipProbe, quickCompress, trimRange, addToast])
+
+  const handleRename = useCallback(async (newName: string): Promise<boolean> => {
+    if (!selectedClip) return false
+    // Compressing reads the file and writes next to it under its current name
+    if (compressJobs.some(job => job.clip.path === selectedClip.path)) {
+      addToast('Wait for this clip to finish compressing before renaming it', 'info')
+      return false
+    }
+    const result = await window.clipit.renameFile(selectedClip.path, newName)
+    if (!result.success || !result.newPath) {
+      addToast(result.error || 'Failed to rename file', 'error')
+      return false
+    }
+    if (result.newPath !== selectedClip.path) {
+      restoreTimeRef.current = videoRef.current?.currentTime ?? null
+      await refreshClips()
+      const clips = await window.clipit.getClips(selectedClip.game)
+      const renamed = clips.find(c => c.path === result.newPath)
+      if (renamed) selectClip(renamed)
+    }
+    return true
+  }, [selectedClip, compressJobs, addToast, refreshClips, selectClip])
+
+  const handleCompressStart = useCallback((request: CompressRequest) => {
+    if (!selectedClip) return
+    setShowCompress(false)
+    enqueueCompress(selectedClip, request)
+  }, [selectedClip])
+
+  // Refresh the list when a background compression ends, and follow the clip
+  // to its compressed file if it's still the one on screen
+  const selectedClipRef = useRef(selectedClip)
+  selectedClipRef.current = selectedClip
+  useEffect(() => {
+    return onCompressFinished(async (job, result) => {
+      if (!result.success) {
+        if (!result.cancelled) {
+          addToast(`${job.clip.name}: ${result.error || 'Compression failed'}`, 'error')
+        }
+        return
+      }
+
+      addToast(`Compressed ${job.clip.name}: ${result.originalSizeMb} MB → ${result.sizeMb} MB`, 'success')
+      if (job.request.deleteOriginal && result.deletedOriginal === false) {
+        addToast('The original could not be deleted, it was kept', 'info')
+      }
+
+      const wasViewing = selectedClipRef.current?.path === job.clip.path
+      const replacedInPlace = result.output === job.clip.path
+      if (wasViewing && replacedInPlace) selectClip(null)
+      await refreshClips()
+      await refreshGames()
+      if (wasViewing && job.request.deleteOriginal && result.output) {
+        const clips = await window.clipit.getClips(job.clip.game)
+        const compressed = clips.find(c => c.path === result.output)
+        if (compressed && selectedClipRef.current?.path !== result.output) selectClip(compressed)
+      }
+    })
+  }, [addToast, selectClip, refreshClips, refreshGames])
+
+  const handleDelete = useCallback(() => {
+    if (!selectedClip) return
+    deleteClips([selectedClip])
+  }, [selectedClip, deleteClips])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!selectedClip || selectedClip.type !== 'video') return
+      if (isClipBeingReplaced) return
       if (e.target instanceof HTMLInputElement) return
+      if (e.ctrlKey || e.metaKey || e.altKey) return
 
       switch (e.key.toLowerCase()) {
         case ' ':
@@ -259,12 +489,66 @@ export default function MainContent() {
         case 'm':
           handleToggleMute()
           break
+        case 'x':
+          if (trimStart !== 0 || trimEnd !== duration) {
+            e.preventDefault()
+            handleTrim()
+          }
+          break
+        case 'c':
+          e.preventDefault()
+          // C compresses straight away, Shift+C opens the options
+          if (e.shiftKey) handleOpenCompress()
+          else handleQuickCompress()
+          break
+        case 'f':
+          handleToggleFullscreen()
+          break
+        case 'arrowup':
+          e.preventDefault()
+          handleVolumeChange(volume + 0.05)
+          break
+        case 'arrowdown':
+          e.preventDefault()
+          handleVolumeChange(volume - 0.05)
+          break
+        case 'arrowleft':
+          e.preventDefault()
+          handleSkip(-SKIP_SECONDS)
+          break
+        case 'arrowright':
+          e.preventDefault()
+          handleSkip(SKIP_SECONDS)
+          break
+        case ',':
+        case '<':
+          e.preventDefault()
+          handleStepFrame(-1)
+          break
+        case '.':
+        case '>':
+          e.preventDefault()
+          handleStepFrame(1)
+          break
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedClip, currentTime, handlePlayPause, handleResetTrim, handleSetTrimStart, handleToggleMute])
+  }, [selectedClip, isClipBeingReplaced, currentTime, volume, trimStart, trimEnd, duration, handlePlayPause, handleResetTrim, handleSetTrimStart, handleToggleMute, handleToggleFullscreen, handleVolumeChange, handleTrim, handleOpenCompress, handleQuickCompress, handleStepFrame, handleSkip])
+
+  // Escape while fullscreen should only leave fullscreen, not also clear the sidebar selection
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && document.fullscreenElement) {
+        e.stopImmediatePropagation()
+        document.exitFullscreen()
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape, true)
+    return () => window.removeEventListener('keydown', handleEscape, true)
+  }, [])
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -309,11 +593,60 @@ export default function MainContent() {
     )
   }
 
+  // The player has to let go of a clip that is being compressed in place
+  if (isClipBeingReplaced && replaceJob) {
+    return (
+      <div className="main-content">
+        <div className="player-container">
+          <div className="no-selection compress-placeholder">
+            <Loader2 size={32} className="compress-spin" />
+            <div>
+              {replaceJob.status === 'running'
+                ? `Compressing ${selectedClip.name}... ${replaceJob.percent}%`
+                : `${selectedClip.name} is queued for compression`}
+            </div>
+            <div className="compress-placeholder-hint">The original is being replaced, so it can't be played until it's done. Other clips work as normal.</div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const isVideo = selectedClip.type === 'video'
+
+  // Sits in the button row normally, and over the video in fullscreen
+  const volumeControl = (
+    <div className="volume-control">
+      <div
+        className="mute-indicator"
+        title={isMuted ? 'Audio Muted (Click or M to unmute)' : 'Audio On (Click or M to mute)'}
+        onClick={(e) => {
+          e.stopPropagation()
+          handleToggleMute()
+        }}
+        style={{ cursor: 'pointer' }}
+      >
+        {isMuted || volume === 0 ? <VolumeX size={20} /> : volume < 0.5 ? <Volume1 size={20} /> : <Volume2 size={20} />}
+      </div>
+      <input
+        type="range"
+        className="volume-slider"
+        min={0}
+        max={1}
+        step={0.01}
+        value={isMuted ? 0 : volume}
+        title={`Volume ${Math.round((isMuted ? 0 : volume) * 100)}% (Up/Down arrows)`}
+        style={{ '--volume-fill': `${(isMuted ? 0 : volume) * 100}%` } as React.CSSProperties}
+        onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+        // Drop focus so Space, M, I, O etc. keep working after dragging
+        onMouseUp={(e) => e.currentTarget.blur()}
+      />
+    </div>
+  )
 
   return (
     <div className="main-content">
-      <div className="player-container">
+      <div className="player-container" ref={playerContainerRef}>
         {isVideo ? (
           <>
             <video
@@ -325,7 +658,16 @@ export default function MainContent() {
               onLoadedMetadata={handleLoadedMetadata}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
-              onClick={handlePlayPause}
+              onClick={(e) => {
+                // The second click of a double-click is handled by onDoubleClick
+                if (e.detail > 1) return
+                handlePlayPause()
+              }}
+              onDoubleClick={() => {
+                // Undo the play/pause from the first click, then toggle fullscreen
+                handlePlayPause()
+                handleToggleFullscreen()
+              }}
               onError={(e) => {
                 console.error('[Video Player] Error loading video:', selectedClip.path, e)
                 addToast('Failed to load video', 'error')
@@ -339,22 +681,21 @@ export default function MainContent() {
             )}
             {!isVideoLoading && (
               <>
-                <div className="video-hover-overlay">
-                  {isPlaying ? <Pause size={80} /> : <Play size={80} />}
-                </div>
                 <div className="playback-time-overlay">
                   {formatTime(currentTime)} / {formatTime(duration)}
                 </div>
-                <div
-                  className="mute-indicator"
-                  title={isMuted ? 'Audio Muted (Click or M to unmute)' : 'Audio On (Click or M to mute)'}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleToggleMute()
-                  }}
-                  style={{ cursor: 'pointer' }}
-                >
-                  {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                <div className="player-top-controls">
+                  {isFullscreen && volumeControl}
+                  <div
+                    className="fullscreen-toggle"
+                    title={isFullscreen ? 'Exit Fullscreen (F or Esc)' : 'Fullscreen (F or double-click)'}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleToggleFullscreen()
+                    }}
+                  >
+                    {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+                  </div>
                 </div>
               </>
             )}
@@ -373,30 +714,14 @@ export default function MainContent() {
       </div>
 
       <div className="controls">
-        {isVideo && (
-          <div className="shortcuts-hint">
-            <div className="shortcut-item">
-              <kbd>Space</kbd>
-              <span>Play/Pause</span>
-            </div>
-            <div className="shortcut-item">
-              <kbd>M</kbd>
-              <span>Mute</span>
-            </div>
-            <div className="shortcut-item">
-              <kbd>I</kbd>
-              <span>Set In</span>
-            </div>
-            <div className="shortcut-item">
-              <kbd>O</kbd>
-              <span>Set Out</span>
-            </div>
-            <div className="shortcut-item">
-              <kbd>R</kbd>
-              <span>Reset</span>
-            </div>
+        <div className="clip-title-row">
+          <ClipTitle name={selectedClip.name} onRename={handleRename} />
+          <div className="clip-title-meta">
+            <span>{formatUkDate(selectedClip.modified)}</span>
+            <span>{formatUkTime(selectedClip.modified)}</span>
+            <span>{selectedClip.sizeMb} MB</span>
           </div>
-        )}
+        </div>
 
         {isVideo && (
           <>
@@ -408,6 +733,7 @@ export default function MainContent() {
               onSeek={handleSeek}
               onTrimStartChange={handleSetTrimStart}
               onTrimEndChange={setTrimEnd}
+              frames={filmstrip}
             />
 
             <div className="time-display">
@@ -430,19 +756,18 @@ export default function MainContent() {
               <button className="btn btn-secondary" onClick={handlePlayPause}>
                 {isPlaying ? <Pause size={16} /> : <Play size={16} />}
                 {isPlaying ? 'Pause' : 'Play'}
-              </button>
-              <button className="btn btn-secondary" onClick={handleResetTrim}>
-                <RotateCcw size={16} />
-                Reset
+                <kbd className="btn-kbd">Space</kbd>
               </button>
               <div className="split-button-container" ref={saveDropdownRef}>
                 <button
                   className="btn btn-primary split-button-main"
                   onClick={handleTrim}
                   disabled={trimStart === 0 && trimEnd === duration}
+                  title="Cut (X)"
                 >
                   <Scissors size={16} />
                   {saveAsCopy ? 'Save Copy' : 'Overwrite Original'}
+                  <kbd className="btn-kbd">X</kbd>
                 </button>
                 <button
                   className="btn btn-primary split-button-arrow"
@@ -465,6 +790,28 @@ export default function MainContent() {
                     </button>
                   </div>
                 )}
+              </div>
+              <div className="split-button-container compress-split">
+                {quickCompress && (
+                  <div className="compress-quick-hint" title={`${quickCompress.presetName}${quickCompress.deleteOriginal ? ', replaces the original' : ', saves a copy'}${trimRange ? ', trimmed part only' : ''}`}>
+                    {quickCompress.beforeMb} → ~{quickCompress.afterMb} MB
+                    {quickCompress.savedPercent > 0 && <span className="compress-quick-saving"> −{quickCompress.savedPercent}%</span>}
+                  </div>
+                )}
+                <button
+                  className="btn btn-primary split-button-main"
+                  onClick={handleQuickCompress}
+                  title={quickCompress ? `Compress with ${quickCompress.presetName} (C)` : 'Compress (C)'}
+                >
+                  <Minimize2 size={16} />
+                  Compress
+                  <kbd className="btn-kbd">C</kbd>
+                </button>
+                <button
+                  className="btn btn-primary split-button-arrow"
+                  onClick={handleOpenCompress}
+                  title="Compress options (Shift+C)"
+                />
               </div>
             </>
           )}
@@ -504,9 +851,35 @@ export default function MainContent() {
           <button className="btn btn-danger" onClick={handleDelete}>
             <Trash2 size={16} />
             Delete
+            <kbd className="btn-kbd">Del</kbd>
           </button>
+
+          {isVideo && volumeControl}
+
+          {isVideo && (
+            <div className="shortcuts-hint">
+              {SHORTCUTS.map(([key, label]) => (
+                <div className="shortcut-item" key={label}>
+                  <kbd>{key}</kbd>
+                  <span>{label}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {showCompress && (
+        <CompressModal
+          clip={selectedClip}
+          onClose={() => {
+            setShowCompress(false)
+            setCompressPrefsVersion(v => v + 1)
+          }}
+          trim={trimRange}
+          onStart={handleCompressStart}
+        />
+      )}
     </div>
   )
 }

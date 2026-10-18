@@ -1,9 +1,23 @@
 import fs from 'fs'
 import path from 'path'
 import { settingsStore } from '../store/SettingsStore'
+import { isEdited } from '../store/EditStore'
 import { getVideoDuration, getVideoCodec, getImageDimensions } from './FFmpegService'
 import { VIDEO_EXTENSIONS, IMAGE_EXTENSIONS } from '../../shared/types'
 import type { Game, Clip, ClipInfo } from '../../shared/types'
+
+// ShadowPlay's own names, e.g. "WARDOGS 2026.10.16 - 02.16.04.26.DVR.mp4".
+// A clip whose name no longer looks like this has been renamed, so counts as handled.
+const RAW_RECORDING_NAME = /^.+?\s(?:-\s)?\d{4}\.\d{2}\.\d{2}\s-\s\d{2}\.\d{2}\.\d{2}(?:\.\d{2})?(?:\.DVR)?\.[^.]+$/i
+
+function isHandled(fullPath: string, name: string): boolean {
+  return isEdited(fullPath) || !RAW_RECORDING_NAME.test(name)
+}
+
+// Trim and compress write to these while they run
+function isTempFile(name: string): boolean {
+  return name.startsWith('_temp_trim_') || name.startsWith('_temp_compress_')
+}
 
 /**
  * Get all media files from the recordings directory
@@ -29,7 +43,7 @@ export function getMediaFiles(): Clip[] {
         const ext = path.extname(entry.name).toLowerCase()
 
         // Skip thumbnail cache files
-        if (entry.name.endsWith('.thumb.jpg')) continue
+        if (entry.name.endsWith('.thumb.jpg') || isTempFile(entry.name)) continue
 
         // Skip JPEGs that are thumbnails for videos
         if (ext === '.jpg' || ext === '.jpeg') {
@@ -52,6 +66,7 @@ export function getMediaFiles(): Clip[] {
               type: fileType,
               sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
               modified: stats.mtimeMs,
+              edited: isHandled(fullPath, entry.name),
               modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
                 year: 'numeric',
                 month: '2-digit',
@@ -75,7 +90,7 @@ export function getMediaFiles(): Clip[] {
       const ext = path.extname(entry.name).toLowerCase()
 
       // Skip thumbnail cache files
-      if (entry.name.endsWith('.thumb.jpg')) continue
+      if (entry.name.endsWith('.thumb.jpg') || isTempFile(entry.name)) continue
 
       // Skip JPEGs that are thumbnails for videos
       if (ext === '.jpg' || ext === '.jpeg') {
@@ -99,6 +114,7 @@ export function getMediaFiles(): Clip[] {
             type: fileType,
             sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
             modified: stats.mtimeMs,
+            edited: isHandled(fullPath, entry.name),
             modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
               year: 'numeric',
               month: '2-digit',
@@ -137,7 +153,7 @@ export function getGames(): Game[] {
       const ext = path.extname(entry.name).toLowerCase()
 
       // Skip thumbnail cache files
-      if (entry.name.endsWith('.thumb.jpg')) continue
+      if (entry.name.endsWith('.thumb.jpg') || isTempFile(entry.name)) continue
 
       // Skip JPEGs that are thumbnails for videos
       if (ext === '.jpg' || ext === '.jpeg') {
@@ -167,7 +183,7 @@ export function getGames(): Game[] {
         const files = fs.readdirSync(folderPath)
         for (const file of files) {
           const ext = path.extname(file).toLowerCase()
-          if (allExtensions.includes(ext) && !file.endsWith('.thumb.jpg')) {
+          if (allExtensions.includes(ext) && !file.endsWith('.thumb.jpg') && !isTempFile(file)) {
             count++
           }
         }

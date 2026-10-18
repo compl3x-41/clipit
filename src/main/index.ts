@@ -6,6 +6,7 @@ import { registerProtocols } from './utils/protocol'
 import { tunnelService } from './services/TunnelService'
 import { updateService } from './services/UpdateService'
 import { streamableService } from './services/StreamableService'
+import { flushPendingDeletes } from './services/FileService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -35,6 +36,8 @@ const createWindow = () => {
   })
 
   mainWindow.once('ready-to-show', () => {
+    // Open maximised so clips get the whole screen
+    mainWindow?.maximize()
     mainWindow?.show()
 
     if (mainWindow) {
@@ -126,6 +129,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('will-quit', () => {
+  flushPendingDeletes()
 })
 
 app.on('before-quit', async () => {

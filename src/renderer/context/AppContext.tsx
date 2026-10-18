@@ -1,10 +1,20 @@
-import { createContext, useState, useEffect, useCallback, useContext, useMemo, type ReactNode } from 'react'
+import { createContext, useState, useEffect, useCallback, useContext, useMemo, useRef, type ReactNode } from 'react'
+import { getCompressJobs } from '../compressQueue'
 import type { Settings, Game, Clip, ClipInfo, EncoderInfo } from '../../shared/types'
 
 interface Toast {
   id: number
   message: string
   type: 'success' | 'error' | 'info'
+}
+
+// Deleted clips stay on disk this long so the delete can be undone
+export const DELETE_UNDO_SECONDS = 15
+
+export interface PendingDelete {
+  id: number
+  clips: Clip[]
+  expiresAt: number
 }
 
 interface AppContextType {
@@ -65,6 +75,14 @@ interface AppContextType {
   installUpdate: () => void
   dismissUpdate: () => void
 
+  // Deleting with undo
+  pendingDeletes: PendingDelete[]
+  deleteClips: (clips: Clip[]) => void
+  undoDelete: (id: number) => void
+  // Set to a clip's path to start it playing as soon as it loads
+  autoPlayPath: string | null
+  clearAutoPlay: () => void
+
   // Toasts
   toasts: Toast[]
   addToast: (message: string, type?: 'success' | 'error' | 'info') => void
@@ -106,6 +124,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [updateStatus, setUpdateStatus] = useState<'none' | 'available' | 'downloading' | 'ready'>('none')
   const [updateVersion, setUpdateVersion] = useState<string | null>(null)
   const [updateProgress, setUpdateProgress] = useState(0)
+
+  // Pending deletes
+  const [pendingDeletes, setPendingDeletes] = useState<PendingDelete[]>([])
+  const [autoPlayPath, setAutoPlayPath] = useState<string | null>(null)
+  const deleteTimers = useRef(new Map<number, ReturnType<typeof setTimeout>>())
+  const nextDeleteId = useRef(1)
+  const hiddenPaths = useMemo(
+    () => new Set(pendingDeletes.flatMap(pending => pending.clips.map(clip => clip.path))),
+    [pendingDeletes]
+  )
 
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([])
@@ -353,7 +381,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Filtered and sorted clips
   const filteredClips = useMemo(() => {
-    let result = [...clips]
+    let result = clips.filter(clip => !hiddenPaths.has(clip.path))
 
     if (filter !== 'all') {
       result = result.filter(clip => clip.type === filter)
@@ -372,7 +400,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     return result
-  }, [clips, filter, sort])
+  }, [clips, filter, sort, hiddenPaths])
 
   const selectClip = useCallback((clip: Clip | null, isMulti = false, isRange = false) => {
     if (!clip) {
@@ -384,7 +412,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     // Compute filtered clips inline
-    let currentFilteredClips = [...clips]
+    let currentFilteredClips = clips.filter(c => !hiddenPaths.has(c.path))
     if (filter !== 'all') {
       currentFilteredClips = currentFilteredClips.filter(c => c.type === filter)
     }
@@ -429,7 +457,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSelectedClips([clip])
       setLastSelectedIndex(clipIndex)
     }
-  }, [clips, filter, sort, lastSelectedIndex, selectedClips])
+  }, [clips, filter, sort, hiddenPaths, lastSelectedIndex, selectedClips])
 
   const selectAllClips = useCallback(() => {
     setSelectedClips(filteredClips)
@@ -477,6 +505,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToasts(prev => prev.filter(t => t.id !== id))
     }, 5000)
   }, [toastId])
+
+  // Timers outlive renders, so they call the latest refresh functions
+  const refreshRef = useRef({ refreshClips, refreshGames, addToast })
+  refreshRef.current = { refreshClips, refreshGames, addToast }
+
+  const deleteClips = useCallback((toDelete: Clip[]) => {
+    const compressing = new Set(getCompressJobs().map(job => job.clip.path))
+    const clipsToDelete = toDelete.filter(clip => !compressing.has(clip.path) && !hiddenPaths.has(clip.path))
+    if (clipsToDelete.length < toDelete.length) {
+      addToast('Clips that are being compressed were not deleted', 'info')
+    }
+    if (clipsToDelete.length === 0) return
+
+    // Move on to the clip below the deleted ones (or above, at the end of the list)
+    const deletedPaths = new Set(clipsToDelete.map(clip => clip.path))
+    const lastIndex = Math.max(...filteredClips.map((clip, i) => deletedPaths.has(clip.path) ? i : -1))
+    const remaining = filteredClips.filter(clip => !deletedPaths.has(clip.path))
+    const next = lastIndex >= 0
+      ? filteredClips.slice(lastIndex + 1).find(clip => !deletedPaths.has(clip.path)) || remaining[remaining.length - 1]
+      : undefined
+    const shouldMove = selectedClips.some(clip => deletedPaths.has(clip.path)) || (selectedClip && deletedPaths.has(selectedClip.path))
+
+    const id = nextDeleteId.current++
+    setPendingDeletes(prev => [...prev, { id, clips: clipsToDelete, expiresAt: Date.now() + DELETE_UNDO_SECONDS * 1000 }])
+
+    if (shouldMove) {
+      if (next) {
+        setSelectedClip(next)
+        setSelectedClips([next])
+        setLastSelectedIndex(remaining.findIndex(clip => clip.path === next.path))
+        if (next.type === 'video') setAutoPlayPath(next.path)
+      } else {
+        setSelectedClip(null)
+        setSelectedClips([])
+        setLastSelectedIndex(-1)
+      }
+    }
+
+    deleteTimers.current.set(id, setTimeout(async () => {
+      deleteTimers.current.delete(id)
+      const { refreshClips, refreshGames, addToast } = refreshRef.current
+      for (const clip of clipsToDelete) {
+        try {
+          const result = await window.clipit.deleteFile(clip.path)
+          if (!result.success) addToast(result.error || `Failed to delete ${clip.name}`, 'error')
+        } catch {
+          addToast(`Failed to delete ${clip.name}`, 'error')
+        }
+      }
+      // Refresh first so the deleted clips don't flash back into the list
+      await refreshClips()
+      await refreshGames()
+      setPendingDeletes(prev => prev.filter(pending => pending.id !== id))
+    }, DELETE_UNDO_SECONDS * 1000))
+  }, [filteredClips, hiddenPaths, selectedClip, selectedClips, addToast])
+
+  const undoDelete = useCallback((id: number) => {
+    const timer = deleteTimers.current.get(id)
+    if (!timer) return
+    clearTimeout(timer)
+    deleteTimers.current.delete(id)
+    setPendingDeletes(prev => prev.filter(pending => pending.id !== id))
+  }, [])
+
+  // Lets the main process finish these deletes if the app is closed during the undo window
+  useEffect(() => {
+    window.clipit.setPendingDeletes([...hiddenPaths])
+  }, [hiddenPaths])
+
+  const clearAutoPlay = useCallback(() => setAutoPlayPath(null), [])
 
   const removeToast = useCallback((id: number) => {
     setToasts(prev => prev.filter(t => t.id !== id))
@@ -540,6 +638,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     downloadUpdate,
     installUpdate,
     dismissUpdate,
+    pendingDeletes,
+    deleteClips,
+    undoDelete,
+    autoPlayPath,
+    clearAutoPlay,
     toasts,
     addToast,
     removeToast

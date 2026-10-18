@@ -24,7 +24,7 @@ Desktop app for managing and sharing game clips. Organize recordings by game, tr
 
 ## Installation
 
-**[Download the latest release](https://github.com/lowbit/clipit/releases)** for your platform:
+**[Download the latest release](https://github.com/compl3x-41/clipit/releases)** for your platform:
 
 **Windows:** Run `Clipit-Setup-X.X.X.exe`
 **Linux (AppImage):** `chmod +x Clipit-X.X.X.AppImage && ./Clipit-X.X.X.AppImage`

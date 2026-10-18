@@ -1,9 +1,49 @@
 import fs from 'fs'
 import path from 'path'
-import { spawn } from 'child_process'
+import { spawn, ChildProcess } from 'child_process'
 import { getFFmpegPath, ffmpegExists } from '../utils/ffmpegBinary'
 import { getVideoCodec } from './FFmpegService'
 import { IMAGE_EXTENSIONS } from '../../shared/types'
+
+// FFmpeg processes currently reading each file. On Windows they hold the file
+// open without delete sharing, which makes rename fail while they run.
+const activeProcesses = new Map<string, Set<ChildProcess>>()
+// Files whose thumbnail generation is paused (e.g. while being renamed)
+const pausedPaths = new Set<string>()
+
+export function trackProcess(filePath: string, process: ChildProcess): void {
+  let processes = activeProcesses.get(filePath)
+  if (!processes) {
+    processes = new Set()
+    activeProcesses.set(filePath, processes)
+  }
+  processes.add(process)
+  process.on('close', () => {
+    processes!.delete(process)
+    if (processes!.size === 0 && activeProcesses.get(filePath) === processes) {
+      activeProcesses.delete(filePath)
+    }
+  })
+}
+
+/**
+ * Kill any thumbnail generation reading this file and block new runs
+ * until resumeThumbnailGeneration is called
+ */
+export function pauseThumbnailGeneration(filePath: string): void {
+  pausedPaths.add(filePath)
+  for (const process of activeProcesses.get(filePath) ?? []) {
+    process.kill()
+  }
+}
+
+export function isThumbnailGenerationPaused(filePath: string): boolean {
+  return pausedPaths.has(filePath)
+}
+
+export function resumeThumbnailGeneration(filePath: string): void {
+  pausedPaths.delete(filePath)
+}
 
 /**
  * Get the cache path for a thumbnail
@@ -21,6 +61,8 @@ async function generateThumbnailWithMethod(
   time: string,
   options: { useHwaccel?: boolean; accurateSeek?: boolean } = {}
 ): Promise<Buffer | null> {
+  if (pausedPaths.has(filePath) || !fs.existsSync(filePath)) return null
+
   return new Promise((resolve) => {
     const ffmpegPath = getFFmpegPath()
     let cmd: string[]
@@ -65,6 +107,7 @@ async function generateThumbnailWithMethod(
     }
 
     const process = spawn(ffmpegPath, cmd)
+    trackProcess(filePath, process)
     const chunks: Buffer[] = []
     let timedOut = false
 
@@ -103,6 +146,8 @@ async function generateThumbnailWithMethod(
  * Generate image thumbnail
  */
 async function generateImageThumbnail(filePath: string): Promise<Buffer | null> {
+  if (pausedPaths.has(filePath) || !fs.existsSync(filePath)) return null
+
   return new Promise((resolve) => {
     const ffmpegPath = getFFmpegPath()
     const process = spawn(ffmpegPath, [
@@ -111,6 +156,7 @@ async function generateImageThumbnail(filePath: string): Promise<Buffer | null> 
       '-f', 'mjpeg',
       '-y', 'pipe:1'
     ])
+    trackProcess(filePath, process)
 
     const chunks: Buffer[] = []
     const timeoutId = setTimeout(() => {
@@ -205,5 +251,15 @@ export function deleteThumbnailCache(filePath: string): void {
   const cachePath = getThumbnailCachePath(filePath)
   if (fs.existsSync(cachePath)) {
     fs.unlinkSync(cachePath)
+  }
+}
+
+/**
+ * Move a cached thumbnail to follow a renamed file
+ */
+export function renameThumbnailCache(oldPath: string, newPath: string): void {
+  const oldCachePath = getThumbnailCachePath(oldPath)
+  if (fs.existsSync(oldCachePath)) {
+    fs.renameSync(oldCachePath, getThumbnailCachePath(newPath))
   }
 }

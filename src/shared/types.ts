@@ -13,6 +13,8 @@ export interface Clip {
   sizeMb: number
   modified: number
   modifiedStr: string
+  // Trimmed or compressed by Clipit
+  edited?: boolean
 }
 
 export interface ClipInfo {
@@ -41,6 +43,33 @@ export interface ShareRequest {
   quality?: 'high' | 'medium' | 'low'
   fps?: 'original' | '60' | '30'
   resolution?: 'original' | '1080' | '720'
+}
+
+export interface CompressRequest {
+  path: string
+  resolution: 'original' | '1440' | '1080' | '720' | '480'
+  fps: 'original' | '60' | '30'
+  codec: 'h264' | 'h265'
+  videoBitrateKbps: number
+  audioBitrateKbps: number
+  deleteOriginal: boolean
+  // Only encode this section of the clip, in seconds
+  startTime?: number
+  endTime?: number
+}
+
+export interface CompressResult {
+  success: boolean
+  output?: string
+  sizeMb?: number
+  originalSizeMb?: number
+  deletedOriginal?: boolean
+  cancelled?: boolean
+  error?: string
+}
+
+export interface CompressProgress {
+  percent: number
 }
 
 export interface UploadProgress {

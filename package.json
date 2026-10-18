@@ -1,6 +1,6 @@
 {
   "name": "clipit",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Cross-platform game clip manager with multi-GPU encoding support",
   "author": {
     "name": "lowbit",
@@ -45,7 +45,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "lowbit",
+      "owner": "compl3x-41",
       "repo": "clipit",
       "releaseType": "release"
     },

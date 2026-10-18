@@ -9,6 +9,10 @@ import SetupScreen from './components/SetupScreen'
 import LoadingOverlay from './components/LoadingOverlay'
 import ToastContainer from './components/ToastContainer'
 import UpdateBanner from './components/UpdateBanner'
+import StatusBar from './components/StatusBar'
+import UndoDeleteBar from './components/UndoDeleteBar'
+import SidebarResizer from './components/SidebarResizer'
+import './theme'
 
 function AppContent() {
   const {
@@ -54,24 +58,29 @@ function AppContent() {
   }
 
   return (
-    <div className="app">
-      {updateStatus !== 'none' && (
-        <UpdateBanner
-          status={updateStatus}
-          version={updateVersion || undefined}
-          progress={updateProgress}
-          onDownload={downloadUpdate}
-          onInstall={installUpdate}
-          onDismiss={dismissUpdate}
-        />
-      )}
-      <Sidebar />
-      <MainContent />
-      {showSettings && <SettingsModal />}
-      {showTunnelNotice && <TunnelNoticeModal onDismiss={dismissTunnelNotice} />}
-      {showChangelog && <ChangelogModal version={appVersion} onDismiss={dismissChangelog} />}
-      {loading && <LoadingOverlay text={loadingText} />}
-      <ToastContainer />
+    <div className="app-shell">
+      <div className="app">
+        {updateStatus !== 'none' && (
+          <UpdateBanner
+            status={updateStatus}
+            version={updateVersion || undefined}
+            progress={updateProgress}
+            onDownload={downloadUpdate}
+            onInstall={installUpdate}
+            onDismiss={dismissUpdate}
+          />
+        )}
+        <Sidebar />
+        <SidebarResizer />
+        <MainContent />
+        {showSettings && <SettingsModal />}
+        {showTunnelNotice && <TunnelNoticeModal onDismiss={dismissTunnelNotice} />}
+        {showChangelog && <ChangelogModal version={appVersion} onDismiss={dismissChangelog} />}
+        {loading && <LoadingOverlay text={loadingText} />}
+        <ToastContainer />
+        <UndoDeleteBar />
+      </div>
+      <StatusBar />
     </div>
   )
 }

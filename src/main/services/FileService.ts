@@ -1,13 +1,37 @@
 import fs from 'fs'
 import path from 'path'
 import { shell } from 'electron'
-import { deleteThumbnailCache } from './ThumbnailService'
-import { safeUnlink } from '../utils/safeFileOps'
+import { forgetEdited, moveEdited } from '../store/EditStore'
+import { deleteThumbnailCache, renameThumbnailCache, pauseThumbnailGeneration, resumeThumbnailGeneration } from './ThumbnailService'
+import { safeUnlink, safeRename } from '../utils/safeFileOps'
 import { settingsStore } from '../store/SettingsStore'
 
 /**
  * Delete a file, its cached thumbnail, and any encoded versions
  */
+// Clips the renderer has deleted but is still offering to undo
+let pendingDeletePaths: string[] = []
+
+export function setPendingDeletes(paths: string[]): void {
+  pendingDeletePaths = paths
+}
+
+/**
+ * Finish deletes that were still waiting for their undo window when the app quits
+ */
+export function flushPendingDeletes(): void {
+  for (const filePath of pendingDeletePaths) {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+      deleteThumbnailCache(filePath)
+      forgetEdited(filePath)
+    } catch {
+      // Keep the clip rather than block quitting
+    }
+  }
+  pendingDeletePaths = []
+}
+
 export async function deleteFile(filePath: string): Promise<{ success: boolean; error?: string }> {
   if (!fs.existsSync(filePath)) {
     return { success: false, error: 'File not found' }
@@ -17,6 +41,7 @@ export async function deleteFile(filePath: string): Promise<{ success: boolean; 
     // Use safe delete with retry logic for locked files
     await safeUnlink(filePath)
     deleteThumbnailCache(filePath)
+    forgetEdited(filePath)
 
     // Delete encoded versions if they exist
     await deleteEncodedVersions(filePath)
@@ -90,30 +115,55 @@ export async function renameFile(oldPath: string, newName: string): Promise<{ su
     return { success: false, error: 'File not found' }
   }
 
-  try {
-    const dir = path.dirname(oldPath)
-    const ext = path.extname(oldPath)
-    const nameWithoutExt = newName.replace(new RegExp(ext + '$'), '')
-    const newPath = path.join(dir, nameWithoutExt + ext)
+  const dir = path.dirname(oldPath)
+  const ext = path.extname(oldPath)
+  const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const nameWithoutExt = newName.replace(new RegExp(escapedExt + '$', 'i'), '')
+  const newPath = path.join(dir, nameWithoutExt + ext)
 
-    // Check if target already exists
-    if (fs.existsSync(newPath) && newPath !== oldPath) {
-      return { success: false, error: 'A file with this name already exists' }
-    }
-
-    fs.renameSync(oldPath, newPath)
-
-    // Update thumbnail cache
-    deleteThumbnailCache(oldPath)
-
+  if (newPath === oldPath) {
     return { success: true, newPath }
+  }
+
+  // Windows and macOS paths are case-insensitive, so a case-only rename
+  // points at the same file and must not be reported as a conflict
+  const isSameFile = process.platform === 'linux'
+    ? false
+    : newPath.toLowerCase() === oldPath.toLowerCase()
+
+  // Check if target already exists
+  if (fs.existsSync(newPath) && !isSameFile) {
+    return { success: false, error: 'A file with this name already exists' }
+  }
+
+  // Thumbnail FFmpeg runs hold the file open on Windows, which blocks rename
+  pauseThumbnailGeneration(oldPath)
+
+  try {
+    // Use safe rename with retry logic for locked files
+    await safeRename(oldPath, newPath, { maxRetries: 6, retryDelay: 200 })
   } catch (error: any) {
     let errorMessage = String(error)
-    if (error.code === 'EACCES' || error.code === 'EPERM') {
+    if (error.code === 'EBUSY' || error.code === 'EPERM') {
+      errorMessage = 'File is currently in use. Please close any programs using this file and try again.'
+    } else if (error.code === 'EACCES') {
       errorMessage = 'Permission denied. Cannot rename file.'
     }
     return { success: false, error: errorMessage }
+  } finally {
+    resumeThumbnailGeneration(oldPath)
   }
+
+  moveEdited(oldPath, newPath)
+
+  // The file is already renamed, so a thumbnail cache problem is not a failure
+  try {
+    renameThumbnailCache(oldPath, newPath)
+  } catch (error) {
+    console.error(`Failed to move thumbnail cache for: ${newPath}`, error)
+  }
+
+  return { success: true, newPath }
 }
 
 /**

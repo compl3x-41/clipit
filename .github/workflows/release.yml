@@ -1,0 +1,33 @@
+name: Release
+
+# Push a tag like v1.4.1 to build the Windows installer and publish it as a GitHub release
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download bundled tools
+        run: |
+          npm run download-ffmpeg -- --win
+          npm run download-cloudflared -- --win
+
+      - name: Build and publish
+        run: npm run publish:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
