@@ -35,8 +35,21 @@ while (($path = [Console]::In.ReadLine()) -ne $null) {
     $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
     $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
     $stream.Dispose()
-    $lines = @($result.Lines | ForEach-Object { $_.Text })
-    [Console]::Out.WriteLine((@{ lines = $lines } | ConvertTo-Json -Compress))
+    $lines = @()
+    $boxes = @()
+    foreach ($line in $result.Lines) {
+      $lines += $line.Text
+      $left = 1e9; $top = 1e9; $right = 0; $bottom = 0
+      foreach ($word in $line.Words) {
+        $rect = $word.BoundingRect
+        if ($rect.X -lt $left) { $left = $rect.X }
+        if ($rect.Y -lt $top) { $top = $rect.Y }
+        if ($rect.X + $rect.Width -gt $right) { $right = $rect.X + $rect.Width }
+        if ($rect.Y + $rect.Height -gt $bottom) { $bottom = $rect.Y + $rect.Height }
+      }
+      $boxes += ,@([int]$left, [int]$top, [int]($right - $left), [int]($bottom - $top))
+    }
+    [Console]::Out.WriteLine((@{ lines = $lines; boxes = $boxes } | ConvertTo-Json -Compress -Depth 4))
   } catch {
     [Console]::Out.WriteLine((@{ lines = @(); error = $_.Exception.Message } | ConvertTo-Json -Compress))
   }
@@ -44,8 +57,10 @@ while (($path = [Console]::In.ReadLine()) -ne $null) {
 }
 `
 
-interface OcrAnswer {
+export interface OcrAnswer {
   lines: string[]
+  // Where each line sits in the image, as [left, top, width, height] in pixels
+  boxes?: number[][]
   error?: string
 }
 
@@ -87,7 +102,10 @@ export class WindowsOcr {
             else reject(new Error(message.error || 'Windows OCR is not available'))
           } else {
             const lines = Array.isArray(message.lines) ? message.lines : message.lines ? [message.lines] : []
-            this.waiting.shift()?.({ lines: lines.map(String), error: message.error })
+            // ConvertTo-Json flattens a list holding one box into the box itself
+            let boxes = Array.isArray(message.boxes) ? message.boxes : []
+            if (boxes.length === 4 && typeof boxes[0] === 'number') boxes = [boxes]
+            this.waiting.shift()?.({ lines: lines.map(String), boxes, error: message.error })
           }
         }
       })

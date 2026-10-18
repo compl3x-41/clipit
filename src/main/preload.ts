@@ -84,6 +84,8 @@ contextBridge.exposeInMainWorld('clipit', {
 
   getUnlinkedNames: (): Promise<UnlinkedName[]> => ipcRenderer.invoke('clipit:scan:unlinked'),
 
+  getScanNamePreview: (name: string): Promise<string | null> => ipcRenderer.invoke('clipit:scan:preview', { name }),
+
   linkScanName: (name: string, personId: string): Promise<number> =>
     ipcRenderer.invoke('clipit:scan:link', { name, personId }),
 
@@ -239,6 +241,7 @@ declare global {
       getScanProgress: () => Promise<ScanProgress>
       onScanProgress: (callback: (progress: ScanProgress) => void) => () => void
       getUnlinkedNames: () => Promise<UnlinkedName[]>
+      getScanNamePreview: (name: string) => Promise<string | null>
       linkScanName: (name: string, personId: string) => Promise<number>
       ignoreScanName: (name: string) => Promise<void>
       unignoreScanName: (name: string) => Promise<void>

@@ -19,6 +19,105 @@ function splitAliases(text: string): string[] {
   return text.split(',').map(alias => alias.trim()).filter(Boolean)
 }
 
+/**
+ * A picture of the overlay line the name was read from, loaded once the row scrolls into view
+ */
+function NamePreview({ name }: { name: string }) {
+  const [preview, setPreview] = useState<string | null | undefined>(undefined)
+  const [visible, setVisible] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element) return
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some(entry => entry.isIntersecting)) {
+        setVisible(true)
+        observer.disconnect()
+      }
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!visible) return
+    let cancelled = false
+    window.clipit.getScanNamePreview(name).then((result) => {
+      if (!cancelled) setPreview(result)
+    })
+    return () => { cancelled = true }
+  }, [visible, name])
+
+  return (
+    <div className="unlinked-preview" ref={ref}>
+      {preview ? <img src={preview} alt={`Where "${name}" was read`} /> : <span>{preview === null ? 'No picture' : 'Loading…'}</span>}
+    </div>
+  )
+}
+
+function UnlinkedRow({ entry, people, onLink, onIgnore }: {
+  entry: UnlinkedName
+  people: Person[]
+  onLink: (name: string, personId: string) => void
+  onIgnore: (name: string) => void
+}) {
+  const { addPerson } = useApp()
+  // Electron has no window.prompt, so a new friend is named right in the row
+  const [newFriend, setNewFriend] = useState<string | null>(null)
+
+  const create = async () => {
+    if (!newFriend?.trim()) return
+    const person = await addPerson(newFriend)
+    setNewFriend(null)
+    onLink(entry.name, person.id)
+  }
+
+  return (
+    <div className="unlinked-row">
+      <NamePreview name={entry.name} />
+      <div className="unlinked-info">
+        <span className="unlinked-name">{entry.name}</span>
+        <span className="unlinked-count">{entry.clips} {entry.clips === 1 ? 'clip' : 'clips'}</span>
+      </div>
+      {newFriend === null ? (
+        <select
+          className="form-select"
+          value=""
+          onChange={(e) => {
+            if (e.target.value === '__new__') setNewFriend(entry.name)
+            else if (e.target.value) onLink(entry.name, e.target.value)
+          }}
+        >
+          <option value="">Link to friend…</option>
+          {people.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
+          <option value="__new__">+ New friend</option>
+        </select>
+      ) : (
+        <div className="unlinked-new">
+          <input
+            className="form-input"
+            autoFocus
+            value={newFriend}
+            placeholder="Friend's name"
+            onChange={(e) => setNewFriend(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation()
+              if (e.key === 'Enter') create()
+              if (e.key === 'Escape') setNewFriend(null)
+            }}
+          />
+          <button className="btn btn-primary" onClick={create} disabled={!newFriend.trim()}>Add</button>
+          <button className="friend-icon-btn" onClick={() => setNewFriend(null)} title="Cancel"><X size={15} /></button>
+        </div>
+      )}
+      <button className="friend-icon-btn" onClick={() => onIgnore(entry.name)} title="Not a friend (e.g. your own name, or a misread)">
+        <EyeOff size={15} />
+      </button>
+    </div>
+  )
+}
+
 function FriendRow({ person, others, onSaved }: { person: Person; others: Person[]; onSaved: () => void }) {
   const { removePerson, addToast } = useApp()
   const [name, setName] = useState(person.name)
@@ -91,6 +190,7 @@ export default function FriendManagerModal() {
   const [ignored, setIgnored] = useState<string[]>([])
   // A name seen in one clip only is usually a misread, so those wait behind a button
   const [showOneOffs, setShowOneOffs] = useState(false)
+  const oneOffs = unlinked.filter(entry => entry.clips === 1).length
   const [scanSettings, setScanSettings] = useState<ScanSettings | null>(null)
   const [debug, setDebug] = useState<ScanDebugItem[] | null>(null)
   const [devOptions] = useState(loadDevOptions)
@@ -119,9 +219,15 @@ export default function FriendManagerModal() {
   }, [progress, refreshPeople])
 
   const handleAdd = async () => {
-    if (!newName.trim()) return
-    await addPerson(newName)
+    const name = newName.trim()
+    if (!name) {
+      addToast('Type a name first', 'info')
+      return
+    }
+    const existed = people.some(p => p.name.toLowerCase() === name.toLowerCase())
+    await addPerson(name)
     setNewName('')
+    addToast(existed ? `${name} is already a friend` : `Added ${name}`, existed ? 'info' : 'success')
   }
 
   const afterFriendChange = async () => {
@@ -136,14 +242,7 @@ export default function FriendManagerModal() {
     if (result.debug) setDebug(result.debug)
   }
 
-  const linkName = async (name: string, choice: string) => {
-    if (!choice) return
-    let personId = choice
-    if (choice === '__new__') {
-      const typed = window.prompt(`Friend's name in Clipit (their overlay name "${name}" will be linked to them)`, name)
-      if (!typed?.trim()) return
-      personId = (await addPerson(typed)).id
-    }
+  const linkName = async (name: string, personId: string) => {
     const tagged = await window.clipit.linkScanName(name, personId)
     addToast(tagged > 0 ? `Linked "${name}" and tagged ${tagged} ${tagged === 1 ? 'clip' : 'clips'}` : `Linked "${name}"`, 'success')
     await afterFriendChange()
@@ -264,22 +363,11 @@ export default function FriendManagerModal() {
               ) : (
                 <div className="unlinked-list">
                   {unlinked.filter(entry => showOneOffs || entry.clips > 1).map(entry => (
-                    <div className="unlinked-row" key={entry.name}>
-                      <span className="unlinked-name">{entry.name}</span>
-                      <span className="unlinked-count">{entry.clips} {entry.clips === 1 ? 'clip' : 'clips'}</span>
-                      <select className="form-select" value="" onChange={(e) => linkName(entry.name, e.target.value)}>
-                        <option value="">Link to friend…</option>
-                        {sorted.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}
-                        <option value="__new__">+ New friend</option>
-                      </select>
-                      <button className="friend-icon-btn" onClick={() => ignoreName(entry.name)} title="Not a friend (e.g. your own name, or a misread)">
-                        <EyeOff size={15} />
-                      </button>
-                    </div>
+                    <UnlinkedRow key={entry.name} entry={entry} people={sorted} onLink={linkName} onIgnore={ignoreName} />
                   ))}
                   {unlinked.some(entry => entry.clips === 1) && (
                     <button className="btn btn-secondary unlinked-more" onClick={() => setShowOneOffs(!showOneOffs)}>
-                      {showOneOffs ? 'Hide names seen in only one clip' : `Show ${unlinked.filter(entry => entry.clips === 1).length} names seen in only one clip`}
+                      {showOneOffs ? 'Hide names seen in only one clip' : `Show ${oneOffs} ${oneOffs === 1 ? 'name' : 'names'} seen in only one clip`}
                     </button>
                   )}
                 </div>

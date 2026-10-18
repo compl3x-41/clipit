@@ -4,7 +4,7 @@ import { getGames, getClips, getClipInfo } from '../services/MediaService'
 import { watchRecordings } from '../services/FolderWatchService'
 import { getCleanupSummary, runCleanup } from '../services/CleanupService'
 import { getPeople, addPerson, removePerson, setClipPeople, updatePerson, mergePeople } from '../store/PeopleStore'
-import { startScan, cancelScan, getScanProgress, getUnlinkedNames, linkName, ignoreName, unignoreName, applyScanResults } from '../services/OverlayScanService'
+import { startScan, cancelScan, getScanProgress, getUnlinkedNames, getNamePreview, linkName, ignoreName, unignoreName, applyScanResults } from '../services/OverlayScanService'
 import { getIgnoredNames, getScanSettings, setScanSettings } from '../store/ScanStore'
 import { trimVideo } from '../services/TrimService'
 import { compressVideo, cancelCompress, probeVideo } from '../services/CompressService'
@@ -56,6 +56,7 @@ export function registerIpcHandlers() {
   ipcMain.handle('clipit:scan:cancel', async () => cancelScan())
   ipcMain.handle('clipit:scan:progress', async () => getScanProgress())
   ipcMain.handle('clipit:scan:unlinked', async () => getUnlinkedNames())
+  ipcMain.handle('clipit:scan:preview', async (_, args: { name: string }) => getNamePreview(args.name))
   ipcMain.handle('clipit:scan:link', async (_, args: { name: string; personId: string }) => linkName(args.name, args.personId))
   ipcMain.handle('clipit:scan:ignore', async (_, args: { name: string }) => ignoreName(args.name))
   ipcMain.handle('clipit:scan:unignore', async (_, args: { name: string }) => unignoreName(args.name))

@@ -1,10 +1,10 @@
 import fs from 'fs'
 import path from 'path'
 import { spawn, spawnSync } from 'child_process'
-import { app, type BrowserWindow } from 'electron'
+import { app, nativeImage, type BrowserWindow } from 'electron'
 import { getFFmpegPath, ffmpegExists } from '../utils/ffmpegBinary'
 import { readMp4Duration } from '../utils/mp4Duration'
-import { WindowsOcr } from '../utils/windowsOcr'
+import { WindowsOcr, type OcrAnswer } from '../utils/windowsOcr'
 import { getVideoDuration } from './FFmpegService'
 import { getMediaFiles } from './MediaService'
 import { trackProcess, isThumbnailGenerationPaused } from './ThumbnailService'
@@ -20,16 +20,36 @@ import type { ScanProgress, ScanDebugItem, UnlinkedName, Clip } from '../../shar
 // Experimental: OCR on a busy game background will miss names now and then.
 
 interface OcrEngine {
-  recognize(imagePath: string): Promise<{ lines: string[]; error?: string }>
+  recognize(imagePath: string): Promise<OcrAnswer>
   stop(): void
 }
 
 // Tesseract is only used when developing on Linux; Windows uses its built-in OCR
 class TesseractOcr implements OcrEngine {
   async recognize(imagePath: string) {
-    const result = spawnSync('tesseract', [imagePath, '-', '--psm', '6'], { encoding: 'utf8' })
+    const result = spawnSync('tesseract', [imagePath, '-', '--psm', '6', 'tsv'], { encoding: 'utf8' })
     if (result.error) return { lines: [], error: result.error.message }
-    return { lines: result.stdout.split('\n').map(line => line.trim()).filter(Boolean) }
+    // One row per word: level, page, block, paragraph, line, word, left, top, width, height, conf, text
+    const lines = new Map<string, { words: string[]; box: number[] }>()
+    for (const row of result.stdout.split('\n').slice(1)) {
+      const cells = row.split('\t')
+      if (cells.length < 12 || cells[0] !== '5' || !cells[11].trim()) continue
+      const key = cells.slice(1, 5).join('.')
+      const [left, top, width, height] = cells.slice(6, 10).map(Number)
+      const line = lines.get(key)
+      if (!line) {
+        lines.set(key, { words: [cells[11].trim()], box: [left, top, width, height] })
+      } else {
+        const [x, y, w, h] = line.box
+        const right = Math.max(x + w, left + width)
+        const bottom = Math.max(y + h, top + height)
+        line.box = [Math.min(x, left), Math.min(y, top), 0, 0]
+        line.box[2] = right - line.box[0]
+        line.box[3] = bottom - line.box[1]
+        line.words.push(cells[11].trim())
+      }
+    }
+    return { lines: [...lines.values()].map(line => line.words.join(' ')), boxes: [...lines.values()].map(line => line.box) }
   }
   stop() {}
 }
@@ -72,9 +92,9 @@ function tempDir(): string {
 /**
  * Save the overlay corner of one frame as a PNG, enlarged so small text reads better
  */
-function grabOverlay(clipPath: string, seconds: number, outPath: string): Promise<boolean> {
+function grabOverlay(clipPath: string, seconds: number, outPath: string, color = false): Promise<boolean> {
   const { region } = getScanSettings()
-  const crop = `crop=iw*${region.width}:ih*${region.height}:iw*${region.x}:ih*${region.y},scale=iw*2:-1:flags=lanczos,format=gray`
+  const crop = `crop=iw*${region.width}:ih*${region.height}:iw*${region.x}:ih*${region.y},scale=iw*2:-1:flags=lanczos${color ? '' : ',format=gray'}`
   return new Promise((resolve) => {
     const proc = spawn(getFFmpegPath(), [
       '-hide_banner', '-loglevel', 'error',
@@ -285,4 +305,84 @@ export function ignoreName(name: string): void {
 
 export function unignoreName(name: string): void {
   setIgnoredNames(getIgnoredNames().filter(n => normalizeName(n) !== normalizeName(name)))
+}
+
+// Pictures of where each name was read, so it's easy to tell who a name belongs to
+const previewCache = new Map<string, string | null>()
+let previewQueue: Promise<unknown> = Promise.resolve()
+let previewOcr: OcrEngine | null = null
+let previewOcrTimer: NodeJS.Timeout | null = null
+
+function sameGroup(found: string, name: string): boolean {
+  const clean = cleanName(found)
+  return looseName(clean) === looseName(name) || namesMatch(clean, name)
+}
+
+/**
+ * Cut the line holding the name, with the avatar to its left, out of an overlay grab
+ */
+function cropToLine(framePath: string, box: number[]): string {
+  const image = nativeImage.createFromPath(framePath)
+  const { width, height } = image.getSize()
+  const [, top, boxWidth, boxHeight] = box
+  const left = box[0]
+  // The avatar is about twice the height of the text and sits just left of it
+  const padY = Math.round(boxHeight * 0.9)
+  const x = Math.max(0, left - boxHeight * 4)
+  const y = Math.max(0, top - padY)
+  const right = Math.min(width, left + boxWidth + boxHeight)
+  const bottom = Math.min(height, top + boxHeight + padY)
+  return image.crop({ x: Math.round(x), y, width: Math.round(right - x), height: bottom - y }).toDataURL()
+}
+
+async function buildNamePreview(name: string): Promise<string | null> {
+  const results = Object.values(getScanResults())
+    .filter(result => result.names.some(found => sameGroup(found, name)) && fs.existsSync(result.path))
+    .slice(0, 3)
+  if (results.length === 0 || !ffmpegExists()) return null
+
+  if (previewOcrTimer) clearTimeout(previewOcrTimer)
+  previewOcr ??= createOcr()
+  const { framesPerClip } = getScanSettings()
+  let fallback: string | null = null
+  try {
+    for (const result of results) {
+      const duration = await clipDuration(result.path)
+      if (!duration) continue
+      for (let i = 0; i < framesPerClip; i++) {
+        const framePath = path.join(tempDir(), `preview_${i}.png`)
+        if (!await grabOverlay(result.path, duration * (i + 1) / (framesPerClip + 1), framePath, true)) continue
+        try {
+          const answer = await previewOcr.recognize(framePath)
+          const index = answer.lines.findIndex(line => parseOverlayLines([line]).some(found => sameGroup(found, name)))
+          const box = answer.boxes?.[index]
+          if (index !== -1 && box) return cropToLine(framePath, box)
+          // Found nowhere on this frame, but the whole corner still helps
+          fallback ??= nativeImage.createFromPath(framePath).resize({ width: 240 }).toDataURL()
+        } finally {
+          fs.rmSync(framePath, { force: true })
+        }
+      }
+    }
+  } finally {
+    // Keep OCR running briefly, since previews are asked for a few at a time
+    previewOcrTimer = setTimeout(() => {
+      previewOcr?.stop()
+      previewOcr = null
+    }, 30000)
+  }
+  return fallback
+}
+
+export function getNamePreview(name: string): Promise<string | null> {
+  const key = looseName(name)
+  if (previewCache.has(key)) return Promise.resolve(previewCache.get(key)!)
+  const job = previewQueue.then(() => previewCache.has(key) ? previewCache.get(key)! : buildNamePreview(name))
+    .then((preview) => {
+      previewCache.set(key, preview)
+      return preview
+    })
+    .catch(() => null)
+  previewQueue = job
+  return job
 }
