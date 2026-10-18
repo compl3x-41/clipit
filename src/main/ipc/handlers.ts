@@ -1,6 +1,7 @@
 import { ipcMain, dialog, clipboard, shell, app } from 'electron'
 import { settingsStore } from '../store/SettingsStore'
 import { getGames, getClips, getClipInfo } from '../services/MediaService'
+import { watchRecordings } from '../services/FolderWatchService'
 import { getPeople, addPerson, removePerson, setClipPeople } from '../store/PeopleStore'
 import { trimVideo } from '../services/TrimService'
 import { compressVideo, cancelCompress, probeVideo } from '../services/CompressService'
@@ -90,6 +91,7 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('clipit:settings:set', async (_, settings: Partial<Settings>) => {
     settingsStore.setAll(settings)
+    watchRecordings()
     return { success: true }
   })
 

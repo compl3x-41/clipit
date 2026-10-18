@@ -2,6 +2,7 @@ import { app, BrowserWindow, protocol, Menu, session } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { registerIpcHandlers } from './ipc/handlers'
+import { watchRecordings } from './services/FolderWatchService'
 import { registerProtocols } from './utils/protocol'
 import { tunnelService } from './services/TunnelService'
 import { updateService } from './services/UpdateService'
@@ -43,6 +44,7 @@ const createWindow = () => {
     if (mainWindow) {
       updateService.setMainWindow(mainWindow)
       streamableService.setMainWindow(mainWindow)
+      watchRecordings(mainWindow)
       setTimeout(() => {
         updateService.checkForUpdates()
       }, 3000)

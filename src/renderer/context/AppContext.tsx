@@ -11,8 +11,13 @@ function loadClips(game: string): Promise<Clip[]> {
 type ClipFilter = 'all' | 'video' | 'image'
 type ClipSort = 'date' | 'name' | 'size'
 
-function visibleClips(clips: Clip[], hiddenPaths: Set<string>, filter: ClipFilter, sort: ClipSort, personFilter: string[]): Clip[] {
+function visibleClips(clips: Clip[], hiddenPaths: Set<string>, filter: ClipFilter, sort: ClipSort, personFilter: string[], search: string): Clip[] {
   let result = clips.filter(clip => !hiddenPaths.has(clip.path))
+
+  const query = search.trim().toLowerCase()
+  if (query) {
+    result = result.filter(clip => clip.name.toLowerCase().includes(query))
+  }
 
   if (filter !== 'all') {
     result = result.filter(clip => clip.type === filter)
@@ -88,6 +93,10 @@ interface AppContextType {
   setSort: (sort: 'date' | 'name' | 'size') => void
   filteredClips: Clip[]
 
+  // Filters the clip list by name
+  search: string
+  setSearch: (search: string) => void
+
   // Friends tagged on clips
   people: Person[]
   personFilter: string[]
@@ -155,6 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sort, setSort] = useState<'date' | 'name' | 'size'>('date')
   const [people, setPeople] = useState<Person[]>([])
   const [personFilter, setPersonFilter] = useState<string[]>([])
+  const [search, setSearch] = useState('')
 
   // Encoders
   const [encoders, setEncoders] = useState<EncoderInfo[]>([])
@@ -428,8 +438,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Filtered and sorted clips
   const filteredClips = useMemo(
-    () => visibleClips(clips, hiddenPaths, filter, sort, personFilter),
-    [clips, filter, sort, hiddenPaths, personFilter]
+    () => visibleClips(clips, hiddenPaths, filter, sort, personFilter, search),
+    [clips, filter, sort, hiddenPaths, personFilter, search]
   )
 
   const selectClip = useCallback((clip: Clip | null, isMulti = false, isRange = false) => {
@@ -441,7 +451,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const currentFilteredClips = visibleClips(clips, hiddenPaths, filter, sort, personFilter)
+    const currentFilteredClips = visibleClips(clips, hiddenPaths, filter, sort, personFilter, search)
 
     const clipIndex = currentFilteredClips.findIndex(c => c.path === clip.path)
 
@@ -472,7 +482,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setSelectedClips([clip])
       setLastSelectedIndex(clipIndex)
     }
-  }, [clips, filter, sort, hiddenPaths, personFilter, lastSelectedIndex, selectedClips])
+  }, [clips, filter, sort, hiddenPaths, personFilter, search, lastSelectedIndex, selectedClips])
 
   const selectAllClips = useCallback(() => {
     setSelectedClips(filteredClips)
@@ -523,6 +533,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedClip(prev => prev && update(prev))
     setSelectedClips(prev => prev.map(update))
   }, [])
+
+  // New, renamed or deleted files in the recordings folder
+  useEffect(() => {
+    return window.clipit.onMediaChanged(() => {
+      refreshGames()
+      refreshClips()
+    })
+  }, [refreshGames, refreshClips])
 
   const detectEncoders = useCallback(async () => {
     const detected = await window.clipit.detectEncoders()
@@ -660,6 +678,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFilter,
     setSort,
     filteredClips,
+    search,
+    setSearch,
     people,
     personFilter,
     setPersonFilter,

@@ -1,7 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import { settingsStore } from '../store/SettingsStore'
-import { isEdited } from '../store/EditStore'
+import { isEdited, isCompressed } from '../store/EditStore'
 import { getClipPeople } from '../store/PeopleStore'
 import { getVideoDuration, getVideoCodec, getImageDimensions } from './FFmpegService'
 import { VIDEO_EXTENSIONS, IMAGE_EXTENSIONS } from '../../shared/types'
@@ -13,6 +13,11 @@ const RAW_RECORDING_NAME = /^.+?\s(?:-\s)?\d{4}\.\d{2}\.\d{2}\s-\s\d{2}\.\d{2}\.
 
 function isHandled(fullPath: string, name: string): boolean {
   return isEdited(fullPath) || !RAW_RECORDING_NAME.test(name)
+}
+
+// Compressed by Clipit, or a copy it saved with the _compressed suffix
+function isShrunk(fullPath: string, name: string): boolean {
+  return isCompressed(fullPath) || /_compressed(?:_\d+)?\.[^.]+$/i.test(name)
 }
 
 // Trim and compress write to these while they run
@@ -68,6 +73,7 @@ export function getMediaFiles(): Clip[] {
               sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
               modified: stats.mtimeMs,
               edited: isHandled(fullPath, entry.name),
+              compressed: isShrunk(fullPath, entry.name),
               people: getClipPeople(fullPath),
               modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
                 year: 'numeric',
@@ -117,6 +123,7 @@ export function getMediaFiles(): Clip[] {
             sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
             modified: stats.mtimeMs,
             edited: isHandled(fullPath, entry.name),
+              compressed: isShrunk(fullPath, entry.name),
               people: getClipPeople(fullPath),
             modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
               year: 'numeric',

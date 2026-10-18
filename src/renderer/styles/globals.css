@@ -1644,7 +1644,7 @@ body {
 
 .compress-presets {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(var(--clip-columns, 2), minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -2081,20 +2081,21 @@ body {
   background: var(--bg-tertiary);
 }
 
-/* Clip list as a grid of thumbnail cards */
-[data-theme="medal"] .sidebar-content.clips-view {
+/* Clip list as a grid of thumbnail cards (1, 2 or 3 across) */
+.sidebar-content.clips-view.layout-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(var(--clip-columns, 2), minmax(0, 1fr));
   align-content: start;
   gap: 12px;
   padding: 8px 12px 12px;
 }
 
-[data-theme="medal"] .clips-view > .empty-state {
+.clips-view.layout-grid > .empty-state {
   grid-column: 1 / -1;
 }
 
-[data-theme="medal"] .clips-view .list-item {
+.clips-view.layout-grid .list-item {
+  margin: 0;
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
@@ -2104,31 +2105,31 @@ body {
   transition: background 0.15s;
 }
 
-[data-theme="medal"] .clips-view .list-item:hover {
+.clips-view.layout-grid .list-item:hover {
   background: var(--bg-tertiary);
 }
 
-[data-theme="medal"] .clips-view .list-item.selected {
+.clips-view.layout-grid .list-item.selected {
   background: var(--bg-tertiary);
   border-left: none;
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
-[data-theme="medal"] .clips-view .list-item-thumb-container {
+.clips-view.layout-grid .list-item-thumb-container {
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 9;
 }
 
-[data-theme="medal"] .clips-view .list-item-thumb {
+.clips-view.layout-grid .list-item-thumb {
   border-radius: 7px;
 }
 
-[data-theme="medal"] .clips-view .list-item-info {
+.clips-view.layout-grid .list-item-info {
   padding: 0 2px 2px;
 }
 
-[data-theme="medal"] .clips-view .list-item-name {
+.clips-view.layout-grid .list-item-name {
   font-weight: 600;
 }
 
@@ -2211,7 +2212,7 @@ body {
   border-top: 1px solid var(--border);
 }
 
-[data-theme="medal"] .clips-view .list-item-name {
+.clips-view .list-item-name {
   white-space: normal;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2220,7 +2221,7 @@ body {
   word-break: break-word;
 }
 
-[data-theme="medal"] .clips-view .list-item-meta {
+.clips-view .list-item-meta {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2311,9 +2312,13 @@ body {
   bottom: 5px;
 }
 
-/* Clips Clipit hasn't trimmed or compressed yet */
+/* Clips nobody has touched yet glow red; renamed or trimmed but not compressed glow yellow */
 .list-item.unedited .list-item-thumb {
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.85), 0 0 10px 1px rgba(239, 68, 68, 0.55);
+}
+
+.list-item.uncompressed .list-item-thumb {
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.85), 0 0 10px 1px rgba(250, 204, 21, 0.5);
 }
 
 /* Clip details on hover */
@@ -2676,4 +2681,127 @@ button.clip-title:hover .clip-title-icon {
 
 .list-item-all .list-item-name {
   font-weight: 600;
+}
+
+/* Clip list as rows: bigger thumbnails than the original list */
+.clips-view.layout-list .list-item-thumb-container {
+  width: 128px;
+  height: 72px;
+}
+
+.clips-view.layout-list .list-item {
+  padding: 8px 12px;
+}
+
+/* List / 1 / 2 / 3 across switch next to Sort */
+.layout-switch {
+  display: flex;
+  flex: none;
+  margin-left: 8px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.layout-switch button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.layout-switch button + button {
+  border-left: 1px solid var(--border-light);
+}
+
+.layout-switch button:hover {
+  color: var(--text-primary);
+}
+
+.layout-switch button.active {
+  background: var(--accent);
+  color: #000;
+}
+
+/* Search box above the clip list */
+.clip-search {
+  position: relative;
+  padding: 8px 16px 0;
+}
+
+.clip-search input {
+  width: 100%;
+  padding: 7px 28px 7px 30px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  outline: none;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.clip-search input:focus {
+  border-color: var(--accent);
+}
+
+.clip-search-icon {
+  position: absolute;
+  left: 26px;
+  top: 50%;
+  margin-top: 4px;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.clip-search-clear {
+  position: absolute;
+  right: 22px;
+  top: 50%;
+  margin-top: 4px;
+  transform: translateY(-50%);
+  display: flex;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.clip-search-clear:hover {
+  color: var(--text-primary);
+}
+
+/* Playback speed, cycles with S */
+.speed-toggle {
+  min-width: 42px;
+  margin-left: 8px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-light);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.speed-toggle:hover {
+  color: var(--text-primary);
+}
+
+.speed-toggle.slowed {
+  border-color: var(--accent);
+  color: var(--accent);
 }

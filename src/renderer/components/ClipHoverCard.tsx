@@ -66,7 +66,8 @@ export default function ClipHoverCard({ clip, top, left }: ClipHoverCardProps) {
       ['Resolution', probe ? `${probe.width}×${probe.height}` : '…'],
       ['Frame rate', probe ? `${Math.round(probe.fps)} FPS` : '…'],
       ['Bitrate', probe ? `${(probe.bitrateKbps / 1000).toFixed(1)} Mbps` : '…'],
-      ['Edited', clip.edited ? 'Yes' : 'Not yet']
+      ['Edited', clip.edited ? 'Yes' : 'Not yet'],
+      ['Compressed', clip.compressed ? 'Yes' : 'Not yet']
     )
   }
 

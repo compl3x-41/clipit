@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'clipit:sidebarWidth'
-const DEFAULT_WIDTH = 280
+// Fits two clip cards side by side
+const DEFAULT_WIDTH = 440
+// Other parts of the app can ask for a width, e.g. when switching how many clips sit side by side
+export const SET_WIDTH_EVENT = 'clipit:set-sidebar-width'
 const MIN_WIDTH = 220
 // Always leave the player at least this much room
 const MIN_PLAYER_WIDTH = 420
@@ -30,6 +33,12 @@ export default function SidebarResizer() {
   useEffect(() => {
     document.documentElement.style.setProperty('--sidebar-width', `${width}px`)
   }, [width])
+
+  useEffect(() => {
+    const handleSetWidth = (e: Event) => setWidth(clampWidth((e as CustomEvent<number>).detail))
+    window.addEventListener(SET_WIDTH_EVENT, handleSetWidth)
+    return () => window.removeEventListener(SET_WIDTH_EVENT, handleSetWidth)
+  }, [])
 
   useEffect(() => {
     const handleResize = () => setWidth(w => clampWidth(w))

@@ -7,7 +7,7 @@ import { deleteThumbnailCache } from './ThumbnailService'
 import { atomicFileReplace, safeRename, safeUnlink } from '../utils/safeFileOps'
 import { settingsStore } from '../store/SettingsStore'
 import { readFileTimes, applyFileTimes } from '../utils/fileTimes'
-import { markEdited, forgetEdited } from '../store/EditStore'
+import { markCompressed, forgetEdited } from '../store/EditStore'
 import { getClipPeople, tagClip, forgetClipPeople } from '../store/PeopleStore'
 import { resolveOutputHeight, resolveOutputFps, probeForSection } from '../../shared/compress'
 import type { VideoProbe } from '../../shared/compress'
@@ -283,7 +283,7 @@ export async function compressVideo(
       forgetEdited(sourcePath)
       forgetClipPeople(sourcePath)
     }
-    markEdited(finalPath)
+    markCompressed(finalPath)
     onProgress({ percent: 100 })
 
     const stats = fs.statSync(finalPath)

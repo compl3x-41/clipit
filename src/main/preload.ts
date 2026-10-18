@@ -51,6 +51,12 @@ contextBridge.exposeInMainWorld('clipit', {
   deleteFile: (path: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('clipit:file:delete', { path }),
 
+  onMediaChanged: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('media-changed', handler)
+    return () => ipcRenderer.removeListener('media-changed', handler)
+  },
+
   getPeople: (): Promise<Person[]> =>
     ipcRenderer.invoke('clipit:people:list'),
 
@@ -183,6 +189,7 @@ declare global {
       deleteFile: (path: string) => Promise<{ success: boolean; error?: string }>
       setPendingDeletes: (paths: string[]) => void
       getFilmstrip: (path: string, count: number) => Promise<string[]>
+      onMediaChanged: (callback: () => void) => () => void
       getPeople: () => Promise<Person[]>
       addPerson: (name: string) => Promise<Person>
       removePerson: (id: string) => Promise<void>

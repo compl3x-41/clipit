@@ -5,7 +5,7 @@ import { getFFmpegPath, ffmpegExists } from '../utils/ffmpegBinary'
 import { deleteThumbnailCache } from './ThumbnailService'
 import { atomicFileReplace, safeUnlink } from '../utils/safeFileOps'
 import { readFileTimes, applyFileTimes } from '../utils/fileTimes'
-import { markEdited } from '../store/EditStore'
+import { markEdited, markCompressed, isCompressed } from '../store/EditStore'
 import { getClipPeople, tagClip } from '../store/PeopleStore'
 import type { TrimResult } from '../../shared/types'
 
@@ -28,6 +28,8 @@ export async function trimVideo(
 
   const parsed = path.parse(sourcePath)
   const sourceTimes = readFileTimes(sourcePath)
+  // Trimming copies the streams, so a compressed clip stays compressed
+  const sourceCompressed = isCompressed(sourcePath)
   // Replacing the file drops the tags stored on it
   const sourcePeople = getClipPeople(sourcePath)
 
@@ -92,7 +94,8 @@ export async function trimVideo(
 
         tagClip(finalPath, sourcePeople)
         await applyFileTimes(finalPath, sourceTimes)
-        markEdited(finalPath)
+        if (sourceCompressed) markCompressed(finalPath)
+        else markEdited(finalPath)
 
         const stats = fs.statSync(finalPath)
         resolve({

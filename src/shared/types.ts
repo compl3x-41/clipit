@@ -15,6 +15,7 @@ export interface Clip {
   modifiedStr: string
   // Trimmed or compressed by Clipit
   edited?: boolean
+  compressed?: boolean
   // Ids of the friends tagged in this clip
   people?: string[]
 }

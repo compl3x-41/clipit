@@ -3,9 +3,30 @@ import { useApp } from '../context/AppContext'
 import { getCompressJobs } from '../compressQueue'
 import ClipHoverCard, { formatUkDate, formatUkTime } from './ClipHoverCard'
 import PeoplePicker, { PersonAvatar } from './PeoplePicker'
+import { SET_WIDTH_EVENT } from './SidebarResizer'
 import { ALL_CLIPS } from '../../shared/types'
-import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Layers, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
+import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Layers, List, Search, X, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
 import type { Clip } from '../../shared/types'
+
+// List rows, or a grid of 1, 2 or 3 cards across
+type ClipLayout = 'list' | '1' | '2' | '3'
+const LAYOUT_KEY = 'clipit:clipLayout'
+const LAYOUTS: { id: ClipLayout; width: number }[] = [
+  { id: 'list', width: 380 },
+  { id: '1', width: 300 },
+  { id: '2', width: 440 },
+  { id: '3', width: 600 }
+]
+
+function loadLayout(): ClipLayout {
+  try {
+    const saved = localStorage.getItem(LAYOUT_KEY)
+    if (LAYOUTS.some(l => l.id === saved)) return saved as ClipLayout
+  } catch {
+    // Fall back to the default
+  }
+  return '2'
+}
 
 export default function Sidebar() {
   const {
@@ -35,8 +56,25 @@ export default function Sidebar() {
     deleteClips,
     people,
     personFilter,
-    setPersonFilter
+    setPersonFilter,
+    search,
+    setSearch
   } = useApp()
+
+  const [layout, setLayout] = useState<ClipLayout>(loadLayout)
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  const chooseLayout = (next: ClipLayout) => {
+    setLayout(next)
+    try {
+      localStorage.setItem(LAYOUT_KEY, next)
+    } catch {
+      // Layout still applies for this session
+    }
+    // Resize the panel so the chosen number of clips fits nicely
+    const width = LAYOUTS.find(l => l.id === next)!.width
+    window.dispatchEvent(new CustomEvent(SET_WIDTH_EVENT, { detail: width }))
+  }
 
   const gameLabel = (game: string) => game === ALL_CLIPS ? 'All clips' : game
   const totalClips = games.reduce((sum, game) => sum + game.count, 0)
@@ -245,6 +283,13 @@ export default function Sidebar() {
         }
       }
 
+      // Ctrl+F - Search clips
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && selectedGame) {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      }
+
       // Ctrl+A - Select all clips
       if ((e.ctrlKey || e.metaKey) && e.key === 'a' && selectedGame) {
         e.preventDefault()
@@ -295,7 +340,7 @@ export default function Sidebar() {
           {selectedGame ? (
             <>
               <div className="sidebar-title">{gameLabel(selectedGame)}</div>
-              <div className="sidebar-subtitle">{filteredClips.length} clips</div>
+              <div className="sidebar-subtitle">{filteredClips.length} {filteredClips.length === 1 ? 'clip' : 'clips'}</div>
             </>
           ) : (
             <>
@@ -365,6 +410,39 @@ export default function Sidebar() {
               <option value="name">Name A-Z</option>
               <option value="size">Largest First</option>
             </select>
+            <div className="layout-switch" title="Clip layout">
+              {LAYOUTS.map(({ id }) => (
+                <button
+                  key={id}
+                  className={layout === id ? 'active' : ''}
+                  onClick={() => chooseLayout(id)}
+                  title={id === 'list' ? 'List' : `${id} across`}
+                >
+                  {id === 'list' ? <List size={14} /> : id}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="clip-search">
+            <Search size={14} className="clip-search-icon" />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Search clips  (Ctrl+F)"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearch('')
+                  searchRef.current?.blur()
+                }
+              }}
+            />
+            {search && (
+              <button className="clip-search-clear" onClick={() => setSearch('')} title="Clear search">
+                <X size={14} />
+              </button>
+            )}
           </div>
           <div className="filter-bar">
             <button
@@ -403,7 +481,8 @@ export default function Sidebar() {
       )}
 
       <div
-        className={`sidebar-content ${selectedGame ? 'clips-view' : ''}`}
+        className={`sidebar-content ${selectedGame ? `clips-view ${layout === 'list' ? 'layout-list' : 'layout-grid'}` : ''}`}
+        style={selectedGame && layout !== 'list' ? { '--clip-columns': layout } as React.CSSProperties : undefined}
         onClick={(e) => {
           // Clear selection when clicking empty space
           if (e.target === e.currentTarget) {
@@ -419,7 +498,7 @@ export default function Sidebar() {
             return (
               <div
                 key={clip.path}
-                className={`list-item ${isSelected ? 'selected' : ''} ${isRenaming ? 'renaming' : ''} ${clip.type === 'video' && !clip.edited ? 'unedited' : ''}`}
+                className={`list-item ${isSelected ? 'selected' : ''} ${isRenaming ? 'renaming' : ''} ${clip.type === 'video' ? (!clip.edited ? 'unedited' : !clip.compressed ? 'uncompressed' : '') : ''}`}
                 onMouseEnter={(e) => handleClipHover(clip, e.currentTarget)}
                 onMouseLeave={handleClipHoverEnd}
                 onClick={(e) => {
@@ -442,7 +521,7 @@ export default function Sidebar() {
                       (e.target as HTMLImageElement).style.visibility = 'hidden'
                     }}
                   />
-                  <div className="list-item-date" title={clip.edited ? 'Edited or renamed' : 'Not edited yet'}>
+                  <div className="list-item-date" title={!clip.edited ? 'Not edited yet' : !clip.compressed ? 'Renamed or trimmed, not compressed yet' : 'Compressed'}>
                     <span>{formatUkTime(clip.modified)}</span>
                     <span>{formatUkDate(clip.modified)}</span>
                   </div>
@@ -530,7 +609,9 @@ export default function Sidebar() {
             <div className="empty-state-icon">📂</div>
             <div className="empty-state-title">No clips found</div>
             <div className="empty-state-text">
-              {personFilter.length > 0
+              {search.trim()
+                ? `No clips match "${search.trim()}"`
+                : personFilter.length > 0
                 ? 'No clips have all the selected friends in them'
                 : filter === 'all'
                   ? 'This game folder is empty'

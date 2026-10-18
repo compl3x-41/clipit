@@ -26,11 +26,15 @@ const SHORTCUTS: [string, string][] = [
   ['< >', 'Frame'],
   ['↑↓', 'Vol'],
   ['M', 'Mute'],
+  ['S', 'Speed'],
   ['F', 'Full'],
   ['I O', 'In/Out'],
   ['R', 'Reset'],
   ['⇧C', 'Options']
 ]
+
+// S cycles through these
+const PLAYBACK_SPEEDS = [1, 0.5, 0.25]
 
 export default function MainContent() {
   const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, people, addPerson, removePerson, setClipPeople } = useApp()
@@ -50,6 +54,7 @@ export default function MainContent() {
   const [filmstrip, setFilmstrip] = useState<string[] | undefined>(undefined)
   const theme = useTheme()
   const [isMuted, setIsMuted] = useState(false)
+  const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [volume, setVolume] = useState(1)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [isVideoLoading, setIsVideoLoading] = useState(false)
@@ -140,8 +145,20 @@ export default function MainContent() {
   // Playback position to return to after the clip is reloaded under a new name
   const restoreTimeRef = useRef<number | null>(null)
 
+  // A new clip resets the video element, so reapply the speed each time one loads
+  useEffect(() => {
+    if (!videoRef.current) return
+    videoRef.current.defaultPlaybackRate = playbackSpeed
+    videoRef.current.playbackRate = playbackSpeed
+  }, [playbackSpeed, selectedClip?.path])
+
+  const handleCycleSpeed = useCallback(() => {
+    setPlaybackSpeed(speed => PLAYBACK_SPEEDS[(PLAYBACK_SPEEDS.indexOf(speed) + 1) % PLAYBACK_SPEEDS.length])
+  }, [])
+
   const handleLoadedMetadata = useCallback(() => {
     if (videoRef.current) {
+      videoRef.current.playbackRate = playbackSpeed
       setDuration(videoRef.current.duration)
       setTrimEnd(videoRef.current.duration)
       setIsVideoLoading(false)
@@ -156,7 +173,7 @@ export default function MainContent() {
         videoRef.current.play().catch(() => {})
       }
     }
-  }, [autoPlayPath, selectedClip, clearAutoPlay])
+  }, [autoPlayPath, selectedClip, clearAutoPlay, playbackSpeed])
 
   const handlePlayPause = useCallback(() => {
     if (videoRef.current) {
@@ -496,6 +513,9 @@ export default function MainContent() {
         case 'm':
           handleToggleMute()
           break
+        case 's':
+          handleCycleSpeed()
+          break
         case 'x':
           if (trimStart !== 0 || trimEnd !== duration) {
             e.preventDefault()
@@ -542,7 +562,7 @@ export default function MainContent() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedClip, isClipBeingReplaced, currentTime, volume, trimStart, trimEnd, duration, handlePlayPause, handleResetTrim, handleSetTrimStart, handleToggleMute, handleToggleFullscreen, handleVolumeChange, handleTrim, handleOpenCompress, handleQuickCompress, handleStepFrame, handleSkip])
+  }, [selectedClip, isClipBeingReplaced, currentTime, volume, trimStart, trimEnd, duration, handlePlayPause, handleResetTrim, handleSetTrimStart, handleToggleMute, handleToggleFullscreen, handleVolumeChange, handleTrim, handleOpenCompress, handleQuickCompress, handleStepFrame, handleSkip, handleCycleSpeed])
 
   // Escape while fullscreen should only leave fullscreen, not also clear the sidebar selection
   useEffect(() => {
@@ -648,6 +668,17 @@ export default function MainContent() {
         // Drop focus so Space, M, I, O etc. keep working after dragging
         onMouseUp={(e) => e.currentTarget.blur()}
       />
+      <button
+        className={`speed-toggle ${playbackSpeed !== 1 ? 'slowed' : ''}`}
+        title="Playback speed (S)"
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={(e) => {
+          e.stopPropagation()
+          handleCycleSpeed()
+        }}
+      >
+        {playbackSpeed}x
+      </button>
     </div>
   )
 
