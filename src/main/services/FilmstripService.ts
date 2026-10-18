@@ -13,7 +13,7 @@ const MAX_CACHED = 150
 
 const inFlight = new Map<string, Promise<string[]>>()
 
-function getCacheRoot(): string {
+export function getFilmstripCacheRoot(): string {
   return path.join(app.getPath('userData'), 'filmstrips')
 }
 
@@ -23,7 +23,7 @@ function getCacheDir(filePath: string, count: number): string | null {
     const key = crypto.createHash('sha1')
       .update(`${filePath}|${stats.size}|${stats.mtimeMs}|${count}`)
       .digest('hex')
-    return path.join(getCacheRoot(), key)
+    return path.join(getFilmstripCacheRoot(), key)
   } catch {
     return null
   }
@@ -31,7 +31,7 @@ function getCacheDir(filePath: string, count: number): string | null {
 
 function pruneCache(): void {
   try {
-    const root = getCacheRoot()
+    const root = getFilmstripCacheRoot()
     const dirs = fs.readdirSync(root)
       .map(name => ({ dir: path.join(root, name), time: fs.statSync(path.join(root, name)).mtimeMs }))
       .sort((a, b) => b.time - a.time)

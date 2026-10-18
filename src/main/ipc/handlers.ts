@@ -2,6 +2,7 @@ import { ipcMain, dialog, clipboard, shell, app } from 'electron'
 import { settingsStore } from '../store/SettingsStore'
 import { getGames, getClips, getClipInfo } from '../services/MediaService'
 import { watchRecordings } from '../services/FolderWatchService'
+import { getCleanupSummary, runCleanup } from '../services/CleanupService'
 import { getPeople, addPerson, removePerson, setClipPeople } from '../store/PeopleStore'
 import { trimVideo } from '../services/TrimService'
 import { compressVideo, cancelCompress, probeVideo } from '../services/CompressService'
@@ -31,6 +32,10 @@ export function registerIpcHandlers() {
   ipcMain.handle('clipit:trim:execute', async (_, args: { path: string; start: number; end: number; saveAsCopy?: boolean }) => {
     return trimVideo(args.path, args.start, args.end, args.saveAsCopy || false)
   })
+
+  // Clearing Clipit's own cached files
+  ipcMain.handle('clipit:cleanup:summary', async () => getCleanupSummary())
+  ipcMain.handle('clipit:cleanup:run', async () => runCleanup())
 
   // Friends tagged on clips
   ipcMain.handle('clipit:people:list', async () => getPeople())

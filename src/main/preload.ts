@@ -57,6 +57,12 @@ contextBridge.exposeInMainWorld('clipit', {
     return () => ipcRenderer.removeListener('media-changed', handler)
   },
 
+  getCleanupSummary: (): Promise<{ bytes: number; files: number }> =>
+    ipcRenderer.invoke('clipit:cleanup:summary'),
+
+  runCleanup: (): Promise<{ bytes: number; files: number }> =>
+    ipcRenderer.invoke('clipit:cleanup:run'),
+
   getPeople: (): Promise<Person[]> =>
     ipcRenderer.invoke('clipit:people:list'),
 
@@ -190,6 +196,8 @@ declare global {
       setPendingDeletes: (paths: string[]) => void
       getFilmstrip: (path: string, count: number) => Promise<string[]>
       onMediaChanged: (callback: () => void) => () => void
+      getCleanupSummary: () => Promise<{ bytes: number; files: number }>
+      runCleanup: () => Promise<{ bytes: number; files: number }>
       getPeople: () => Promise<Person[]>
       addPerson: (name: string) => Promise<Person>
       removePerson: (id: string) => Promise<void>

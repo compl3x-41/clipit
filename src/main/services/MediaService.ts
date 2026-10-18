@@ -160,13 +160,13 @@ export function getMediaFiles(): Clip[] {
   return media
 }
 
-// When a clip was added: Clipit keeps trimmed clips' original dates, so use the newer of the two times
-function latestTime(filePath: string): number {
+// Size, and when a clip was added: Clipit keeps trimmed clips' original dates, so use the newer of the two times
+function fileFacts(filePath: string): { size: number; added: number } {
   try {
     const stats = fs.statSync(filePath)
-    return Math.max(stats.mtimeMs, stats.birthtimeMs || 0)
+    return { size: stats.size, added: Math.max(stats.mtimeMs, stats.birthtimeMs || 0) }
   } catch {
-    return 0
+    return { size: 0, added: 0 }
   }
 }
 
@@ -186,6 +186,7 @@ export function getGames(): Game[] {
 
   let rootCount = 0
   let rootLatest = 0
+  let rootSize = 0
   for (const entry of entries) {
     if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase()
@@ -204,13 +205,15 @@ export function getGames(): Game[] {
 
       if (allExtensions.includes(ext)) {
         rootCount++
-        rootLatest = Math.max(rootLatest, latestTime(path.join(recordingsDir, entry.name)))
+        const facts = fileFacts(path.join(recordingsDir, entry.name))
+        rootLatest = Math.max(rootLatest, facts.added)
+        rootSize += facts.size
       }
     }
   }
 
   if (rootCount > 0) {
-    games.push({ name: 'Uncategorized', count: rootCount, latest: rootLatest })
+    games.push({ name: 'Uncategorized', count: rootCount, latest: rootLatest, sizeBytes: rootSize })
   }
 
   for (const entry of entries) {
@@ -219,21 +222,23 @@ export function getGames(): Game[] {
 
       let count = 0
       let latest = 0
+      let sizeBytes = 0
       try {
         const files = fs.readdirSync(folderPath)
         for (const file of files) {
           const ext = path.extname(file).toLowerCase()
           if (allExtensions.includes(ext) && !file.endsWith('.thumb.jpg') && !isTempFile(file)) {
             count++
-            latest = Math.max(latest, latestTime(path.join(folderPath, file)))
+            const facts = fileFacts(path.join(folderPath, file))
+            latest = Math.max(latest, facts.added)
+            sizeBytes += facts.size
           }
         }
       } catch {
       }
 
-      if (count > 0) {
-        games.push({ name: entry.name, count, latest })
-      }
+      // Empty game folders are listed too, so they can be spotted and tidied up
+      games.push({ name: entry.name, count, latest, sizeBytes })
     }
   }
 

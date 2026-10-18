@@ -1,5 +1,7 @@
 import fs from 'fs'
 import path from 'path'
+import crypto from 'crypto'
+import { app } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { getFFmpegPath, ffmpegExists } from '../utils/ffmpegBinary'
 import { getVideoCodec } from './FFmpegService'
@@ -45,12 +47,38 @@ export function resumeThumbnailGeneration(filePath: string): void {
   pausedPaths.delete(filePath)
 }
 
+// Thumbnails live in Clipit's own folder so the recordings folders only hold clips
+export function getThumbnailCacheRoot(): string {
+  return path.join(app.getPath('userData'), 'thumbnails')
+}
+
 /**
  * Get the cache path for a thumbnail
  */
 function getThumbnailCachePath(sourcePath: string): string {
+  const id = process.platform === 'win32' ? sourcePath.toLowerCase() : sourcePath
+  const key = crypto.createHash('sha1').update(id).digest('hex')
+  return path.join(getThumbnailCacheRoot(), `${key}.jpg`)
+}
+
+// Where older versions of Clipit saved thumbnails, right next to the clip
+export function getLegacyThumbnailPath(sourcePath: string): string {
   const parsed = path.parse(sourcePath)
   return path.join(parsed.dir, `${parsed.name}.thumb.jpg`)
+}
+
+// Move an old thumbnail out of the recordings folder into the cache
+function adoptLegacyThumbnail(sourcePath: string, cachePath: string): boolean {
+  const legacyPath = getLegacyThumbnailPath(sourcePath)
+  if (!fs.existsSync(legacyPath)) return false
+  try {
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+    fs.copyFileSync(legacyPath, cachePath)
+    fs.unlinkSync(legacyPath)
+    return true
+  } catch {
+    return fs.existsSync(cachePath)
+  }
 }
 
 /**
@@ -196,7 +224,7 @@ export async function getThumbnail(filePath: string, time: number = 5): Promise<
   const cachePath = getThumbnailCachePath(filePath)
 
   // Check cache first
-  if (fs.existsSync(cachePath)) {
+  if (fs.existsSync(cachePath) || adoptLegacyThumbnail(filePath, cachePath)) {
     return fs.readFileSync(cachePath)
   }
   const ext = path.extname(filePath).toLowerCase()
@@ -235,6 +263,7 @@ export async function getThumbnail(filePath: string, time: number = 5): Promise<
   // Cache the thumbnail
   if (thumbnailData) {
     try {
+      fs.mkdirSync(path.dirname(cachePath), { recursive: true })
       fs.writeFileSync(cachePath, thumbnailData)
     } catch (error) {
       // Silently fail cache write
@@ -248,9 +277,10 @@ export async function getThumbnail(filePath: string, time: number = 5): Promise<
  * Delete cached thumbnail for a file
  */
 export function deleteThumbnailCache(filePath: string): void {
-  const cachePath = getThumbnailCachePath(filePath)
-  if (fs.existsSync(cachePath)) {
-    fs.unlinkSync(cachePath)
+  for (const cachePath of [getThumbnailCachePath(filePath), getLegacyThumbnailPath(filePath)]) {
+    if (fs.existsSync(cachePath)) {
+      fs.unlinkSync(cachePath)
+    }
   }
 }
 
@@ -261,5 +291,7 @@ export function renameThumbnailCache(oldPath: string, newPath: string): void {
   const oldCachePath = getThumbnailCachePath(oldPath)
   if (fs.existsSync(oldCachePath)) {
     fs.renameSync(oldCachePath, getThumbnailCachePath(newPath))
+  } else if (fs.existsSync(getLegacyThumbnailPath(oldPath))) {
+    adoptLegacyThumbnail(oldPath, getThumbnailCachePath(newPath))
   }
 }

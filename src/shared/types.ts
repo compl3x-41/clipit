@@ -5,6 +5,7 @@ export interface Game {
   count: number
   // Newest clip in the folder, so folders can be sorted by most recently added to
   latest?: number
+  sizeBytes?: number
 }
 
 export interface Clip {

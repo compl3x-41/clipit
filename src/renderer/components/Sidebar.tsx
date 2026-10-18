@@ -5,7 +5,7 @@ import ClipHoverCard, { formatUkDate, formatUkTime } from './ClipHoverCard'
 import PeoplePicker, { PersonAvatar } from './PeoplePicker'
 import { SET_WIDTH_EVENT } from './SidebarResizer'
 import { ALL_CLIPS } from '../../shared/types'
-import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Layers, List, Search, X, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
+import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Layers, List, Search, X, Sparkles, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
 import type { Clip } from '../../shared/types'
 
 // List rows, or a grid of 1, 2 or 3 cards across
@@ -17,6 +17,17 @@ const LAYOUTS: { id: ClipLayout; width: number }[] = [
   { id: '2', width: 440 },
   { id: '3', width: 600 }
 ]
+
+export function formatBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
+  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`
+  return `${Math.round(bytes / 1024)} KB`
+}
+
+function folderStats(game: { count: number; sizeBytes?: number }): string {
+  if (game.count === 0) return 'Empty'
+  return `${game.count} ${game.count === 1 ? 'clip' : 'clips'} · ${formatBytes(game.sizeBytes ?? 0)}`
+}
 
 // How the game folders on Home are ordered
 type GameSort = 'recent' | 'count' | 'name'
@@ -76,6 +87,30 @@ export default function Sidebar() {
   } = useApp()
 
   const [layout, setLayout] = useState<ClipLayout>(loadLayout)
+  const [cleanupSize, setCleanupSize] = useState<{ bytes: number; files: number } | null>(null)
+  const [cleaning, setCleaning] = useState(false)
+
+  const refreshCleanupSize = () => {
+    window.clipit.getCleanupSummary().then(setCleanupSize).catch(() => {})
+  }
+
+  // Thumbnails pile up as clips are browsed, so recheck now and then
+  useEffect(() => {
+    refreshCleanupSize()
+    const timer = setInterval(refreshCleanupSize, 60000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const handleCleanup = async () => {
+    setCleaning(true)
+    try {
+      const result = await window.clipit.runCleanup()
+      addToast(result.files > 0 ? `Cleaned up ${formatBytes(result.bytes)} of thumbnails and temp files` : 'Nothing to clean up', 'success')
+    } finally {
+      setCleaning(false)
+      refreshCleanupSize()
+    }
+  }
   const [gameSort, setGameSort] = useState<GameSort>(loadGameSort)
 
   const chooseGameSort = (next: GameSort) => {
@@ -108,6 +143,7 @@ export default function Sidebar() {
 
   const gameLabel = (game: string) => game === ALL_CLIPS ? 'All clips' : game
   const totalClips = games.reduce((sum, game) => sum + game.count, 0)
+  const totalBytes = games.reduce((sum, game) => sum + (game.sizeBytes ?? 0), 0)
 
   // Tunnel state
   const [tunnelInfo, setTunnelInfo] = useState<{ url: string; isActive: boolean; port: number }>({
@@ -509,19 +545,18 @@ export default function Sidebar() {
               Images
             </button>
           </div>
-          {people.length > 0 && (
-            <div className="friends-filter-bar">
-              <PeoplePicker
-                people={people}
-                selected={personFilter}
-                onChange={setPersonFilter}
-                label="Friends"
-              />
-              {personFilter.length > 0 && (
-                <button className="friends-filter-clear" onClick={() => setPersonFilter([])}>Clear</button>
-              )}
-            </div>
-          )}
+          <div className="friends-filter-bar">
+            <PeoplePicker
+              people={people}
+              selected={personFilter}
+              onChange={setPersonFilter}
+              label="Friends"
+              emptyHint="Tag friends on a clip to filter by them"
+            />
+            {personFilter.length > 0 && (
+              <button className="friends-filter-clear" onClick={() => setPersonFilter([])}>Clear</button>
+            )}
+          </div>
         </>
       )}
 
@@ -617,18 +652,18 @@ export default function Sidebar() {
           })
         ) : (
           // Show games list, with every clip in one place at the top
-          [...(games.length > 1 ? [{ name: ALL_CLIPS, count: totalClips }] : []), ...sortedGames].map((game) => game.name === ALL_CLIPS ? (
+          [...(games.length > 1 ? [{ name: ALL_CLIPS, count: totalClips, sizeBytes: totalBytes }] : []), ...sortedGames].map((game) => game.name === ALL_CLIPS ? (
             <div key={ALL_CLIPS} className="list-item list-item-all" onClick={() => selectGame(ALL_CLIPS)}>
               <Layers size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
               <div className="list-item-info">
                 <div className="list-item-name">All clips</div>
               </div>
-              <span className="list-item-count">{game.count}</span>
+              <span className="list-item-stats">{folderStats(game)}</span>
             </div>
           ) : (
             <div
               key={game.name}
-              className={`list-item ${game.name === 'Uncategorized' ? 'list-item-uncategorized' : ''}`}
+              className={`list-item ${game.name === 'Uncategorized' ? 'list-item-uncategorized' : ''} ${game.count === 0 ? 'list-item-empty' : ''}`}
               onClick={() => selectGame(game.name)}
             >
               {game.name === 'Uncategorized' && (
@@ -644,7 +679,7 @@ export default function Sidebar() {
                   )}
                 </div>
               </div>
-              <span className="list-item-count">{game.count}</span>
+              <span className="list-item-stats">{folderStats(game)}</span>
             </div>
           ))
         )}
@@ -750,6 +785,20 @@ export default function Sidebar() {
             />
           </div>
         </div>
+
+        {/* Clears Clipit's own cached pictures and leftovers */}
+        <button
+          className="sidebar-footer-cleaner"
+          onClick={handleCleanup}
+          disabled={cleaning}
+          title="Delete thumbnails, timeline pictures and leftover temp files. Clipit makes them again when needed."
+        >
+          <Sparkles size={16} />
+          <span>{cleaning ? 'Cleaning…' : 'Clean up'}</span>
+          {cleanupSize !== null && cleanupSize.files > 0 && (
+            <span className="sidebar-footer-cleaner-size">{formatBytes(cleanupSize.bytes)}</span>
+          )}
+        </button>
 
         {/* Settings button */}
         <button

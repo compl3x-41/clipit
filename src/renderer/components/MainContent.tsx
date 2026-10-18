@@ -794,18 +794,19 @@ export default function MainContent() {
       <div className="controls">
         <div className="clip-title-row">
           <ClipTitle name={selectedClip.name} onRename={handleRename} />
+          <div className="clip-title-meta">
+            <span>{formatUkDate(selectedClip.modified)}</span>
+            <span>{formatUkTime(selectedClip.modified)}</span>
+            <span>{selectedClip.sizeMb} MB</span>
+          </div>
           <PeoplePicker
             people={people}
             selected={selectedClip.people ?? []}
             onChange={(ids) => setClipPeople(selectedClip, ids)}
             onAdd={addPerson}
             onRemove={handleRemovePerson}
+            label="Friends"
           />
-          <div className="clip-title-meta">
-            <span>{formatUkDate(selectedClip.modified)}</span>
-            <span>{formatUkTime(selectedClip.modified)}</span>
-            <span>{selectedClip.sizeMb} MB</span>
-          </div>
         </div>
 
         {isVideo && (
