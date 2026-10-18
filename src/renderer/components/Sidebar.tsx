@@ -476,7 +476,7 @@ export default function Sidebar() {
                       <div className="list-item-name">{clip.name}</div>
                       <div className="list-item-meta">
                         {selectedGame === ALL_CLIPS && <>{clip.game} • </>}
-                        {clip.sizeMb} MB • {formatUkDate(clip.modified)} {formatUkTime(clip.modified)}
+                        {clip.sizeMb} MB
                       </div>
                       {clip.people && clip.people.length > 0 && (
                         <div className="list-item-people">
