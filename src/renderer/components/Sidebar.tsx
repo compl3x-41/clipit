@@ -18,6 +18,20 @@ const LAYOUTS: { id: ClipLayout; width: number }[] = [
   { id: '3', width: 600 }
 ]
 
+// How the game folders on Home are ordered
+type GameSort = 'recent' | 'count' | 'name'
+const GAME_SORT_KEY = 'clipit:gameSort'
+
+function loadGameSort(): GameSort {
+  try {
+    const saved = localStorage.getItem(GAME_SORT_KEY)
+    if (saved === 'recent' || saved === 'count' || saved === 'name') return saved
+  } catch {
+    // Fall back to the default
+  }
+  return 'recent'
+}
+
 function loadLayout(): ClipLayout {
   try {
     const saved = localStorage.getItem(LAYOUT_KEY)
@@ -62,6 +76,22 @@ export default function Sidebar() {
   } = useApp()
 
   const [layout, setLayout] = useState<ClipLayout>(loadLayout)
+  const [gameSort, setGameSort] = useState<GameSort>(loadGameSort)
+
+  const chooseGameSort = (next: GameSort) => {
+    setGameSort(next)
+    try {
+      localStorage.setItem(GAME_SORT_KEY, next)
+    } catch {
+      // Sort still applies for this session
+    }
+  }
+
+  const sortedGames = [...games].sort((a, b) => {
+    if (gameSort === 'recent') return (b.latest ?? 0) - (a.latest ?? 0) || a.name.localeCompare(b.name)
+    if (gameSort === 'count') return b.count - a.count || a.name.localeCompare(b.name)
+    return a.name.localeCompare(b.name)
+  })
   const searchRef = useRef<HTMLInputElement>(null)
 
   const chooseLayout = (next: ClipLayout) => {
@@ -397,6 +427,21 @@ export default function Sidebar() {
         )}
       </div>
 
+      {!selectedGame && games.length > 1 && (
+        <div className="sort-bar">
+          <span className="sort-label">Sort by:</span>
+          <select
+            className="sort-select"
+            value={gameSort}
+            onChange={(e) => chooseGameSort(e.target.value as GameSort)}
+          >
+            <option value="recent">Recently Added To</option>
+            <option value="count">Most Clips</option>
+            <option value="name">Name A-Z</option>
+          </select>
+        </div>
+      )}
+
       {selectedGame && (
         <>
           <div className="sort-bar">
@@ -572,7 +617,7 @@ export default function Sidebar() {
           })
         ) : (
           // Show games list, with every clip in one place at the top
-          [...(games.length > 1 ? [{ name: ALL_CLIPS, count: totalClips }] : []), ...games].map((game) => game.name === ALL_CLIPS ? (
+          [...(games.length > 1 ? [{ name: ALL_CLIPS, count: totalClips }] : []), ...sortedGames].map((game) => game.name === ALL_CLIPS ? (
             <div key={ALL_CLIPS} className="list-item list-item-all" onClick={() => selectGame(ALL_CLIPS)}>
               <Layers size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
               <div className="list-item-info">
