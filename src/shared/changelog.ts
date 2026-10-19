@@ -5,6 +5,12 @@ export interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '1.6.1',
+    changes: [
+      'Drag a video or picture onto Clipit to open it, even from outside your clips folder; edits are saved next to the file',
+    ],
+  },
+  {
     version: '1.6.0',
     changes: [
       'Experimental Discord overlay auto-tag: scans your clips for the voice overlay and tags the friends it finds, with a Friend Manager to link Discord names and merge duplicates',
