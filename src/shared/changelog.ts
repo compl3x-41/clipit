@@ -5,6 +5,18 @@ export interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '1.6.0',
+    changes: [
+      'Experimental Discord overlay auto-tag: scans your clips for the voice overlay and tags the friends it finds, with a Friend Manager to link Discord names and merge duplicates',
+      'Pressing C on a raw clip opens the name box while it compresses, and Enter jumps to the next clip',
+      'Renames show straight away and the file is renamed when you move to another clip, so playback no longer stalls; Escape and clicking off save the name',
+      'One-click 0.25x, 0.5x, 1x and 2x speed buttons, and every clip starts at 1x',
+      'Choose how far the arrow keys skip (3 seconds by default)',
+      'Notifications moved to the top right so they no longer cover the timeline',
+      'Fixed a Loading spinner that stayed after tagging a friend',
+    ],
+  },
+  {
     version: '1.5.0',
     changes: [
       'Tag friends on clips, filter clips by one or more friends, and an All clips view across every game',

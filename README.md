@@ -35,7 +35,7 @@
 
 - A **filmstrip timeline** with hover previews, so you can find the moment without scrubbing blind.
 - <kbd>I</kbd> and <kbd>O</kbd> set the cut. <kbd>X</kbd> saves a trimmed copy, or overwrites the original if you prefer.
-- <kbd>,</kbd> and <kbd>.</kbd> step one frame at a time, the arrow keys skip 5 seconds, and playback goes from **0.1x to 5x** (<kbd>S</kbd> flips between 1x, 0.5x and 0.25x).
+- <kbd>,</kbd> and <kbd>.</kbd> step one frame at a time, the arrow keys skip 3 seconds (or whatever you set), and one-click buttons switch between **0.25x, 0.5x, 1x and 2x**, with a menu from 0.1x to 5x.
 - Trimmed and compressed files **keep the original recording date**, so nothing jumps around your list.
 
 <br/>
@@ -93,7 +93,7 @@
 | <kbd>Space</kbd> | Play / pause | <kbd>C</kbd> | Compress (then name the clip) |
 | <kbd>I</kbd> / <kbd>O</kbd> | Set In / Out | <kbd>Shift</kbd>+<kbd>C</kbd> | Compress options |
 | <kbd>X</kbd> | Save trimmed copy | <kbd>R</kbd> | Reset trim |
-| <kbd>←</kbd> / <kbd>→</kbd> | Skip 5 seconds | <kbd>,</kbd> / <kbd>.</kbd> | Previous / next frame |
+| <kbd>←</kbd> / <kbd>→</kbd> | Skip (3s, adjustable) | <kbd>,</kbd> / <kbd>.</kbd> | Previous / next frame |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Volume | <kbd>M</kbd> | Mute |
 | <kbd>S</kbd> | Playback speed | <kbd>F</kbd> | Fullscreen |
 | <kbd>Del</kbd> | Delete (with Undo) | <kbd>Ctrl</kbd>+<kbd>F</kbd> | Search clips |
