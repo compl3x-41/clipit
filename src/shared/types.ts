@@ -21,6 +21,8 @@ export interface Clip {
   compressed?: boolean
   // Ids of the friends tagged in this clip
   people?: string[]
+  // Opened by dragging in a file from outside the recordings folder
+  external?: boolean
 }
 
 export interface Person {

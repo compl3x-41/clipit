@@ -40,6 +40,33 @@ function isTempFile(name: string): boolean {
   return name.startsWith('_temp_trim_') || name.startsWith('_temp_compress_')
 }
 
+function buildClip(fullPath: string, name: string, game: string): Clip | null {
+  try {
+    const stats = fs.statSync(fullPath)
+    const fileType = VIDEO_EXTENSIONS.includes(path.extname(name).toLowerCase()) ? 'video' : 'image'
+    return {
+      path: fullPath,
+      name,
+      game,
+      type: fileType,
+      sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
+      modified: stats.mtimeMs,
+      edited: isHandled(fullPath, name),
+      compressed: fileType === 'video' && isShrunk(fullPath, name, stats),
+      people: getClipPeople(fullPath),
+      modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      }).replace(',', '')
+    }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Get all media files from the recordings directory
  */
@@ -76,30 +103,8 @@ export function getMediaFiles(): Clip[] {
         }
 
         if (allExtensions.includes(ext)) {
-          try {
-            const stats = fs.statSync(fullPath)
-            const fileType = VIDEO_EXTENSIONS.includes(ext) ? 'video' : 'image'
-
-            media.push({
-              path: fullPath,
-              name: entry.name,
-              game: gameName,
-              type: fileType,
-              sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
-              modified: stats.mtimeMs,
-              edited: isHandled(fullPath, entry.name),
-              compressed: fileType === 'video' && isShrunk(fullPath, entry.name, stats),
-              people: getClipPeople(fullPath),
-              modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-              }).replace(',', '')
-            })
-          } catch {
-          }
+          const clip = buildClip(fullPath, entry.name, gameName)
+          if (clip) media.push(clip)
         }
       }
     }
@@ -126,30 +131,8 @@ export function getMediaFiles(): Clip[] {
 
       if ([...VIDEO_EXTENSIONS, ...IMAGE_EXTENSIONS].includes(ext)) {
         const fullPath = path.join(recordingsDir, entry.name)
-        try {
-          const stats = fs.statSync(fullPath)
-          const fileType = VIDEO_EXTENSIONS.includes(ext) ? 'video' : 'image'
-
-          media.push({
-            path: fullPath,
-            name: entry.name,
-            game: 'Uncategorized',
-            type: fileType,
-            sizeMb: Math.round(stats.size / (1024 * 1024) * 10) / 10,
-            modified: stats.mtimeMs,
-            edited: isHandled(fullPath, entry.name),
-              compressed: fileType === 'video' && isShrunk(fullPath, entry.name, stats),
-              people: getClipPeople(fullPath),
-            modifiedStr: new Date(stats.mtimeMs).toLocaleString('sv-SE', {
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit'
-            }).replace(',', '')
-          })
-        } catch {
-        }
+        const clip = buildClip(fullPath, entry.name, 'Uncategorized')
+        if (clip) media.push(clip)
       }
     }
   }
@@ -255,6 +238,29 @@ export function getClips(game?: string): Clip[] {
   }
 
   return allClips
+}
+
+/**
+ * Look up a single file, e.g. one dragged onto the window. A file inside the recordings
+ * folder gets the same game as in the clip list; one outside it is opened where it is.
+ */
+export function describeFile(filePath: string): { clip: Clip; inLibrary: boolean } | null {
+  const name = path.basename(filePath)
+  const ext = path.extname(name).toLowerCase()
+  if (![...VIDEO_EXTENSIONS, ...IMAGE_EXTENSIONS].includes(ext) || isTempFile(name)) return null
+  try {
+    if (!fs.statSync(filePath).isFile()) return null
+  } catch {
+    return null
+  }
+
+  const recordingsDir = settingsStore.get('recordingsDir')
+  const relative = recordingsDir ? path.relative(recordingsDir, filePath) : ''
+  const inLibrary = !!recordingsDir && !!relative && !relative.startsWith('..') && !path.isAbsolute(relative)
+  const parent = path.dirname(filePath)
+  const game = inLibrary && path.dirname(relative) === '.' ? 'Uncategorized' : path.basename(parent)
+  const clip = buildClip(filePath, name, game)
+  return clip ? { clip, inLibrary } : null
 }
 
 /**

@@ -60,6 +60,9 @@ const createWindow = () => {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
+  // A file dropped where the page doesn't catch it would replace the app with the file
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
+
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('Failed to load:', errorCode, errorDescription)
   })

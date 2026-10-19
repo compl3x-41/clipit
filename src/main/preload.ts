@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { Settings, ShareRequest, Game, Clip, ClipInfo, TrimResult, ShareResult, EncoderInfo, UploadProgress, CompressRequest, CompressResult, CompressProgress, Person, ScanProgress, ScanDebugItem, UnlinkedName, ScanSettings } from '../shared/types'
 import type { VideoProbe } from '../shared/compress'
 
@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld('clipit', {
 
   getClipInfo: (path: string): Promise<ClipInfo> =>
     ipcRenderer.invoke('clipit:media:get-clip-info', { path }),
+
+  describeFile: (path: string): Promise<{ clip: Clip; inLibrary: boolean } | null> =>
+    ipcRenderer.invoke('clipit:media:describe-file', { path }),
+
+  // Dropped files only carry their real path through Electron's webUtils
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   getVideoUrl: (path: string): string => {
     const urlPath = path.replace(/\\/g, '/')
@@ -222,6 +228,8 @@ declare global {
       getGames: () => Promise<Game[]>
       getClips: (game?: string) => Promise<Clip[]>
       getClipInfo: (path: string) => Promise<ClipInfo>
+      describeFile: (path: string) => Promise<{ clip: Clip; inLibrary: boolean } | null>
+      getPathForFile: (file: File) => string
       getVideoUrl: (path: string) => string
       getImageUrl: (path: string) => string
       getThumbnailUrl: (path: string, time?: number) => string

@@ -140,6 +140,8 @@ interface AppContextType {
   autoPlayPath: string | null
   selectNextClip: () => void
   clearAutoPlay: () => void
+  // Open a file dragged onto the window, from the library or anywhere else
+  openFile: (filePath: string) => Promise<void>
 
   // Toasts
   toasts: Toast[]
@@ -454,6 +456,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const selectNextClip = useCallback(() => {
     const list = visibleClips(clips, hiddenPaths, filter, sort, personFilter, search)
     const index = selectedClip ? list.findIndex(c => c.path === selectedClip.path) : -1
+    // A file opened from outside the list has no clip after it
+    if (selectedClip && index === -1) return
     const next = list[index + 1]
     if (!next) return
     setSelectedClip(next)
@@ -587,6 +591,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setToasts(prev => prev.filter(t => t.id !== id))
     }, 5000)
   }, [toastId])
+
+  const openFile = useCallback(async (filePath: string) => {
+    const found = await window.clipit.describeFile(filePath)
+    if (!found) {
+      addToast('Clipit can only open video and image files', 'error')
+      return
+    }
+    // A clip from the library opens in its game folder, so it shows in the list as well
+    if (found.inLibrary && selectedGame !== ALL_CLIPS && selectedGame !== found.clip.game) {
+      await selectGame(found.clip.game)
+    }
+    const clip = found.inLibrary ? found.clip : { ...found.clip, external: true }
+    setSelectedClip(clip)
+    setSelectedClips([clip])
+    setLastSelectedIndex(-1)
+    if (clip.type === 'video') setAutoPlayPath(clip.path)
+  }, [addToast, selectedGame, selectGame])
 
   // Timers outlive renders, so they call the latest refresh functions
   const refreshRef = useRef({ refreshClips, refreshGames, addToast })
@@ -757,6 +778,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     undoDelete,
     autoPlayPath,
     selectNextClip,
+    openFile,
     clearAutoPlay,
     toasts,
     addToast,

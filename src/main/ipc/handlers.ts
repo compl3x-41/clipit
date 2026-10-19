@@ -1,6 +1,6 @@
 import { ipcMain, dialog, clipboard, shell, app } from 'electron'
 import { settingsStore } from '../store/SettingsStore'
-import { getGames, getClips, getClipInfo } from '../services/MediaService'
+import { getGames, getClips, getClipInfo, describeFile } from '../services/MediaService'
 import { watchRecordings } from '../services/FolderWatchService'
 import { getCleanupSummary, runCleanup } from '../services/CleanupService'
 import { getPeople, addPerson, removePerson, setClipPeople, updatePerson, mergePeople } from '../store/PeopleStore'
@@ -24,6 +24,11 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('clipit:media:get-clips', async (_, args: { game?: string }) => {
     return getClips(args.game)
+  })
+
+  ipcMain.handle('clipit:media:describe-file', async (_, args: { path: string }) => {
+    if (typeof args?.path !== 'string') return null
+    return describeFile(args.path)
   })
 
   ipcMain.handle('clipit:media:get-clip-info', async (_, args: { path: string }) => {

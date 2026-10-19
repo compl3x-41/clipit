@@ -558,9 +558,8 @@ export default function MainContent() {
         // which would close a rename box mid-typing
         const current = selectedClipRef.current?.path
         if (followOutput && (current === job.clip.path || current === result.output)) {
-          const clips = await window.clipit.getClips(job.clip.game)
-          const compressed = clips.find(c => c.path === result.output)
-          if (compressed) selectClip(compressed)
+          const found = await window.clipit.describeFile(result.output!)
+          if (found) selectClip(found.inLibrary ? found.clip : { ...found.clip, external: true })
         }
       } finally {
         if (followOutput) releaseRename(result.output!)
@@ -955,6 +954,11 @@ export default function MainContent() {
             <span>{formatUkDate(selectedClip.modified)}</span>
             <span>{formatUkTime(selectedClip.modified)}</span>
             <span>{selectedClip.sizeMb} MB</span>
+            {selectedClip.external && (
+              <span className="clip-title-external" title={`Opened from ${selectedClip.path}. Edits are saved next to it.`}>
+                From {selectedClip.game}
+              </span>
+            )}
           </div>
           <PeoplePicker
             people={people}

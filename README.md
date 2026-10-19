@@ -80,6 +80,7 @@
 | | |
 |---|---|
 | 🔗 **Share in seconds** | Send a temporary public link through a Cloudflare tunnel, or upload straight to Streamable. |
+| 📂 **Drag and drop** | Drop any video or picture onto Clipit to open and edit it, even from outside your clips folder. |
 | ↩️ **Undo delete** | Deleted clips disappear with a 15 second Undo, and the next clip starts playing. |
 | 🧹 **Clean up** | Thumbnails live in Clipit's own folder instead of your clips folder. One button clears the cache. |
 | ⚡ **Hardware encoding** | NVIDIA NVENC, AMD AMF and Intel Quick Sync, picked automatically. |

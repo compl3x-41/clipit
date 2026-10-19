@@ -13,6 +13,7 @@ import StatusBar from './components/StatusBar'
 import UndoDeleteBar from './components/UndoDeleteBar'
 import SidebarResizer from './components/SidebarResizer'
 import FriendManagerModal from './components/FriendManagerModal'
+import FileDropZone from './components/FileDropZone'
 import './theme'
 
 function AppContent() {
@@ -82,6 +83,7 @@ function AppContent() {
         {loading && <LoadingOverlay text={loadingText} />}
         <ToastContainer />
         <UndoDeleteBar />
+        <FileDropZone />
       </div>
       <StatusBar />
     </div>
