@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
+import { usePendingRenames } from '../renameQueue'
 import { ALL_CLIPS } from '../../shared/types'
 import type { Clip } from '../../shared/types'
 import type { VideoProbe } from '../../shared/compress'
@@ -41,6 +42,7 @@ interface ClipHoverCardProps {
 export default function ClipHoverCard({ clip, top, left }: ClipHoverCardProps) {
   const [probe, setProbe] = useState<VideoProbe | null>(null)
   const { people, selectedGame } = useApp()
+  const pendingName = usePendingRenames().get(clip.path)
 
   useEffect(() => {
     setProbe(null)
@@ -73,7 +75,7 @@ export default function ClipHoverCard({ clip, top, left }: ClipHoverCardProps) {
 
   return (
     <div className="clip-hover-card" style={{ top: clampedTop, left }}>
-      <div className="clip-hover-name">{clip.name}</div>
+      <div className="clip-hover-name">{pendingName ?? clip.name}</div>
       <div className="clip-hover-rows">
         {rows.map(([label, value]) => (
           <div className="clip-hover-row" key={label}>

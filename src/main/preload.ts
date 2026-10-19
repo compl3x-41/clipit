@@ -117,6 +117,9 @@ contextBridge.exposeInMainWorld('clipit', {
   setPendingDeletes: (paths: string[]): void =>
     ipcRenderer.send('clipit:file:set-pending-deletes', paths),
 
+  setPendingRenames: (renames: { path: string; name: string }[]): void =>
+    ipcRenderer.send('clipit:file:set-pending-renames', renames),
+
   renameFile: (path: string, newName: string): Promise<{ success: boolean; error?: string; newPath?: string }> =>
     ipcRenderer.invoke('clipit:file:rename', { path, newName }),
 
@@ -230,6 +233,7 @@ declare global {
       share: (request: ShareRequest) => Promise<ShareResult>
       deleteFile: (path: string) => Promise<{ success: boolean; error?: string }>
       setPendingDeletes: (paths: string[]) => void
+      setPendingRenames: (renames: { path: string; name: string }[]) => void
       getFilmstrip: (path: string, count: number) => Promise<string[]>
       onMediaChanged: (callback: () => void) => () => void
       getCleanupSummary: () => Promise<{ bytes: number; files: number }>

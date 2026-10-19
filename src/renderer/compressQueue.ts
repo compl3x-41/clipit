@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { Clip, CompressRequest, CompressResult } from '../shared/types'
 import { splitFileName } from '../shared/clipNames'
+import { getPendingRename, movePendingRename, queueRename } from './renameQueue'
 
 export interface CompressJob {
   id: number
@@ -8,8 +9,6 @@ export interface CompressJob {
   request: CompressRequest
   status: 'queued' | 'running'
   percent: number
-  // A new name typed while compressing, applied once the file is free
-  renameTo?: string
 }
 
 type FinishedListener = (job: CompressJob, result: CompressResult) => void
@@ -45,42 +44,26 @@ async function runNext() {
     cleanupProgress()
   }
 
-  const finished = jobs.find(j => j.id === job.id) ?? job
-  if (finished.renameTo) result = await applyPendingRename(finished, result)
+  carryPendingRename(job, result)
   setJobs(jobs.filter(j => j.id !== job.id))
-  finishedListeners.forEach(listener => listener(finished, result))
+  finishedListeners.forEach(listener => listener(job, result))
   runNext()
 }
 
 /**
- * Rename the clip as asked while it was compressing. When the original was replaced the
- * compressed file takes the name; otherwise the original does, and the copy follows it.
+ * A name typed while compressing follows the compressed file when it replaced the original.
+ * When the original was kept, it takes the name and the copy is named after it.
  */
-async function applyPendingRename(job: CompressJob, result: CompressResult): Promise<CompressResult> {
-  const [newBase, newExt] = splitFileName(job.renameTo!)
-  const replaced = result.success && job.request.deleteOriginal && result.output
-  if (replaced) {
-    const renamed = await window.clipit.renameFile(result.output!, newBase + splitFileName(result.output!)[1])
-    if (renamed.success && renamed.newPath) return { ...result, output: renamed.newPath }
-    return { ...result, renameError: renamed.error || 'Rename failed' }
+function carryPendingRename(job: CompressJob, result: CompressResult) {
+  const name = getPendingRename(job.clip.path)
+  if (!name || !result.success || !result.output) return
+  const [base] = splitFileName(name)
+  const outputExt = splitFileName(result.output)[1]
+  if (job.request.deleteOriginal) {
+    movePendingRename(job.clip.path, result.output, base + outputExt)
+  } else if (result.output !== job.clip.path) {
+    queueRename(result.output, `${base}_compressed${outputExt}`)
   }
-  const original = await window.clipit.renameFile(job.clip.path, newBase + newExt)
-  if (!original.success) return { ...result, renameError: original.error || 'Rename failed' }
-  if (result.success && result.output && result.output !== job.clip.path) {
-    const copy = await window.clipit.renameFile(result.output, `${newBase}_compressed${splitFileName(result.output)[1]}`)
-    if (copy.success && copy.newPath) return { ...result, output: copy.newPath }
-  }
-  return result
-}
-
-/**
- * Remember a rename for a clip that's waiting for or being compressed
- */
-export function setPendingRename(clipPath: string, newName: string): boolean {
-  const job = jobs.find(j => j.clip.path === clipPath)
-  if (!job) return false
-  updateJob(job.id, { renameTo: newName })
-  return true
 }
 
 export function enqueueCompress(clip: Clip, request: CompressRequest): void {
@@ -98,10 +81,6 @@ export function cancelCompressJob(id: number): void {
     window.clipit.cancelCompress()
   } else {
     setJobs(jobs.filter(j => j.id !== id))
-    // The rename asked for while it waited still happens
-    if (job.renameTo) {
-      window.clipit.renameFile(job.clip.path, job.renameTo).then(() => finishedListeners.forEach(listener => listener(job, { success: false, cancelled: true })))
-    }
   }
 }
 

@@ -34,6 +34,35 @@ export function flushPendingDeletes(): void {
   pendingDeletePaths = []
 }
 
+// Renames the renderer is holding until the clip is off screen
+let pendingRenames: { path: string; name: string }[] = []
+
+export function setPendingRenames(renames: { path: string; name: string }[]): void {
+  pendingRenames = renames
+}
+
+/**
+ * Finish renames that were still waiting when the app quits
+ */
+export function flushPendingRenames(): void {
+  for (const { path: oldPath, name } of pendingRenames) {
+    try {
+      if (!fs.existsSync(oldPath)) continue
+      const ext = path.extname(oldPath)
+      const base = name.replace(new RegExp(ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'), '')
+      const newPath = path.join(path.dirname(oldPath), base + ext)
+      if (newPath === oldPath || fs.existsSync(newPath)) continue
+      fs.renameSync(oldPath, newPath)
+      moveEdited(oldPath, newPath)
+      moveClipPeople(oldPath, newPath)
+      renameThumbnailCache(oldPath, newPath)
+    } catch {
+      // Keep the old name rather than block quitting
+    }
+  }
+  pendingRenames = []
+}
+
 export async function deleteFile(filePath: string): Promise<{ success: boolean; error?: string }> {
   if (!fs.existsSync(filePath)) {
     return { success: false, error: 'File not found' }

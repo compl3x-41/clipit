@@ -10,7 +10,7 @@ import { trimVideo } from '../services/TrimService'
 import { compressVideo, cancelCompress, probeVideo } from '../services/CompressService'
 import { getFilmstrip } from '../services/FilmstripService'
 import { shareMedia } from '../services/ShareService'
-import { deleteFile, renameFile, showInExplorer, setPendingDeletes } from '../services/FileService'
+import { deleteFile, renameFile, showInExplorer, setPendingDeletes, setPendingRenames } from '../services/FileService'
 import { detectAvailableEncoders } from '../services/FFmpegService'
 import { tunnelService } from '../services/TunnelService'
 import { updateService } from '../services/UpdateService'
@@ -102,6 +102,10 @@ export function registerIpcHandlers() {
 
   ipcMain.on('clipit:file:set-pending-deletes', (_, paths: string[]) => {
     setPendingDeletes(Array.isArray(paths) ? paths.filter(p => typeof p === 'string') : [])
+  })
+
+  ipcMain.on('clipit:file:set-pending-renames', (_, renames: { path: string; name: string }[]) => {
+    setPendingRenames(Array.isArray(renames) ? renames.filter(r => r && typeof r.path === 'string' && typeof r.name === 'string') : [])
   })
 
   ipcMain.handle('clipit:file:rename', async (_, args: { path: string; newName: string }) => {

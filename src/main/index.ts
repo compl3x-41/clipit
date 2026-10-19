@@ -8,7 +8,7 @@ import { registerProtocols } from './utils/protocol'
 import { tunnelService } from './services/TunnelService'
 import { updateService } from './services/UpdateService'
 import { streamableService } from './services/StreamableService'
-import { flushPendingDeletes } from './services/FileService'
+import { flushPendingDeletes, flushPendingRenames } from './services/FileService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -137,6 +137,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   flushPendingDeletes()
+  flushPendingRenames()
 })
 
 app.on('before-quit', async () => {

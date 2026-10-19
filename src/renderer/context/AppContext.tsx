@@ -1,5 +1,6 @@
 import { createContext, useState, useEffect, useCallback, useContext, useMemo, useRef, type ReactNode } from 'react'
-import { getCompressJobs } from '../compressQueue'
+import { getCompressJobs, useCompressQueue } from '../compressQueue'
+import { applyPendingRenames, cancelRename, usePendingRenames } from '../renameQueue'
 import { ALL_CLIPS } from '../../shared/types'
 import type { Settings, Game, Clip, ClipInfo, EncoderInfo, Person } from '../../shared/types'
 
@@ -377,7 +378,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     loadClipInfo()
-  }, [selectedClip])
+    // Tagging a friend replaces the clip object; only a different or rewritten file needs new info
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClip?.path, selectedClip?.sizeMb])
 
   const updateSettings = useCallback(async (newSettings: Partial<Settings>) => {
     const wasConfigured = isConfigured
@@ -589,6 +592,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshRef = useRef({ refreshClips, refreshGames, addToast })
   refreshRef.current = { refreshClips, refreshGames, addToast }
 
+  // Rename clips once they're off screen and not being compressed
+  const pendingRenames = usePendingRenames()
+  const compressJobs = useCompressQueue()
+  useEffect(() => {
+    if (pendingRenames.size === 0) return
+    const busy = new Set(compressJobs.map(job => job.clip.path))
+    const onScreen = selectedClip?.path
+    applyPendingRenames(path => path === onScreen || busy.has(path)).then(async ({ applied, errors }) => {
+      const { refreshClips, refreshGames, addToast } = refreshRef.current
+      errors.forEach(error => addToast(error, 'error'))
+      if (applied.length === 0) return
+      const moved = new Map(applied.map(({ from, to }) => [from, to]))
+      const follow = (clip: Clip) => moved.has(clip.path) ? { ...clip, path: moved.get(clip.path)!, name: moved.get(clip.path)!.split(/[\\/]/).pop()! } : clip
+      setSelectedClips(prev => prev.map(follow))
+      setSelectedClip(prev => prev && follow(prev))
+      await refreshClips()
+      await refreshGames()
+    })
+  }, [pendingRenames, compressJobs, selectedClip?.path])
+
   const deleteClips = useCallback((toDelete: Clip[]) => {
     const compressing = new Set(getCompressJobs().map(job => job.clip.path))
     const clipsToDelete = toDelete.filter(clip => !compressing.has(clip.path) && !hiddenPaths.has(clip.path))
@@ -596,6 +619,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addToast('Clips that are being compressed were not deleted', 'info')
     }
     if (clipsToDelete.length === 0) return
+    clipsToDelete.forEach(clip => cancelRename(clip.path))
 
     // Move on to the clip below the deleted ones (or above, at the end of the list)
     const deletedPaths = new Set(clipsToDelete.map(clip => clip.path))

@@ -6,24 +6,37 @@ import ClipTitle from './ClipTitle'
 import { isRawRecordingName } from '../../shared/clipNames'
 import PeoplePicker from './PeoplePicker'
 import { formatUkDate, formatUkTime } from './ClipHoverCard'
-import { Play, Pause, Scissors, Share2, Trash2, Volume1, Volume2, VolumeX, Loader2, Maximize, Minimize, Minimize2, Gauge } from 'lucide-react'
+import { Play, Pause, Scissors, Share2, Trash2, Volume1, Volume2, VolumeX, Loader2, Maximize, Minimize, Minimize2, Gauge, ChevronDown, Minus, Plus } from 'lucide-react'
 import type { CompressRequest, Person } from '../../shared/types'
 import { useTheme } from '../theme'
 import { buildCompressRequest, loadCustomSettings, loadDeleteOriginal, loadPresetId, presetName, settingsForPreset } from '../compressPrefs'
 import { estimateSizeMb, probeForSection } from '../../shared/compress'
 import type { VideoProbe } from '../../shared/compress'
-import { enqueueCompress, isReplacingClip, onCompressFinished, useCompressQueue, setPendingRename } from '../compressQueue'
+import { enqueueCompress, isReplacingClip, onCompressFinished, useCompressQueue } from '../compressQueue'
+import { queueRename, cancelRename, usePendingRenames, holdRename, releaseRename } from '../renameQueue'
 
 type ShareDestination = 'tunnel' | 'streamable'
 
 // Used for frame stepping until the clip's real frame rate has been probed
 const DEFAULT_FRAME_RATE = 60
 const FILMSTRIP_FRAMES = 20
-// How far the left/right arrow keys jump
-const SKIP_SECONDS = 5
+// How far the left/right arrow keys jump, picked next to the speed buttons
+const SKIP_KEY = 'clipit:skipSeconds'
+const DEFAULT_SKIP_SECONDS = 3
+const SKIP_PRESETS = [1, 2, 3, 5, 10, 15, 30]
 
+function loadSkipSeconds(): number {
+  try {
+    const saved = parseFloat(localStorage.getItem(SKIP_KEY) ?? '')
+    return saved > 0 ? saved : DEFAULT_SKIP_SECONDS
+  } catch {
+    return DEFAULT_SKIP_SECONDS
+  }
+}
+
+// The arrow keys' label shows the chosen skip length
 const SHORTCUTS: [string, string][] = [
-  ['←→', `${SKIP_SECONDS}s`],
+  ['←→', 'Skip'],
   ['< >', 'Frame'],
   ['↑↓', 'Vol'],
   ['M', 'Mute'],
@@ -38,6 +51,8 @@ const SHORTCUTS: [string, string][] = [
 const PLAYBACK_SPEEDS = [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 5]
 // S cycles through these slow-motion speeds
 const QUICK_SPEEDS = [1, 0.5, 0.25]
+// One-click speed buttons; the rest are in the menu
+const SPEED_BUTTONS = [0.25, 0.5, 1, 2]
 
 export default function MainContent() {
   const { selectedClip, clipInfo, refreshClips, refreshGames, selectClip, setLoading, addToast, settings, deleteClips, autoPlayPath, clearAutoPlay, selectNextClip, people, addPerson, removePerson, setClipPeople, setShowFriendManager } = useApp()
@@ -59,6 +74,18 @@ export default function MainContent() {
   const [isMuted, setIsMuted] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [showSpeedMenu, setShowSpeedMenu] = useState(false)
+  const [skipSeconds, setSkipSecondsState] = useState(loadSkipSeconds)
+  const [showSkipMenu, setShowSkipMenu] = useState(false)
+  const skipMenuRef = useRef<HTMLDivElement>(null)
+  const setSkipSeconds = useCallback((seconds: number) => {
+    const clamped = Math.min(120, Math.max(0.5, Math.round(seconds * 2) / 2))
+    setSkipSecondsState(clamped)
+    try {
+      localStorage.setItem(SKIP_KEY, String(clamped))
+    } catch {
+      // Still works for this session
+    }
+  }, [])
   const speedMenuRef = useRef<HTMLDivElement>(null)
   const [volume, setVolume] = useState(1)
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -91,7 +118,7 @@ export default function MainContent() {
     if (videoRef.current) {
       videoRef.current.volume = volume
     }
-  }, [volume, selectedClip])
+  }, [volume, selectedClip?.path, selectedClip?.type])
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -108,14 +135,17 @@ export default function MainContent() {
       setTrimEnd(clipInfo.duration)
       setCurrentTime(0)
     }
-  }, [clipInfo, selectedClip])
+  }, [clipInfo])
 
+  // Keyed on the path: tagging a friend or renaming swaps the clip object but not the
+  // file, and the video wouldn't reload to clear the spinner
   useEffect(() => {
     if (selectedClip?.type === 'video') {
       setIsVideoLoading(true)
       setIsPlaying(false)
     }
-  }, [selectedClip])
+    setPlaybackSpeed(1)
+  }, [selectedClip?.path, selectedClip?.type])
 
   // The Medal-style timeline shows frames from the clip
   useEffect(() => {
@@ -126,7 +156,8 @@ export default function MainContent() {
       if (!cancelled) setFilmstrip(frames.map(f => f ? window.clipit.getImageUrl(f) : ''))
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [selectedClip, theme])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClip?.path, selectedClip?.type, selectedClip?.sizeMb, theme])
 
   useEffect(() => {
     setFrameRate(DEFAULT_FRAME_RATE)
@@ -139,7 +170,8 @@ export default function MainContent() {
       if (probe && probe.fps > 0) setFrameRate(probe.fps)
     }).catch(() => {})
     return () => { cancelled = true }
-  }, [selectedClip])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedClip?.path, selectedClip?.type, selectedClip?.sizeMb])
 
   const handleTimeUpdate = useCallback(() => {
     if (videoRef.current) {
@@ -165,6 +197,15 @@ export default function MainContent() {
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [showSpeedMenu])
+
+  useEffect(() => {
+    if (!showSkipMenu) return
+    const close = (e: MouseEvent) => {
+      if (!skipMenuRef.current?.contains(e.target as Node)) setShowSkipMenu(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [showSkipMenu])
 
   const handleCycleSpeed = useCallback(() => {
     setPlaybackSpeed(speed => {
@@ -384,7 +425,8 @@ export default function MainContent() {
 
   const compressJobs = useCompressQueue()
   const isClipBeingReplaced = !!selectedClip && isReplacingClip(compressJobs, selectedClip.path)
-  const pendingRename = selectedClip ? compressJobs.find(job => job.clip.path === selectedClip.path)?.renameTo : undefined
+  const pendingRenames = usePendingRenames()
+  const pendingRename = selectedClip ? pendingRenames.get(selectedClip.path) : undefined
   const replaceJob = selectedClip ? compressJobs.find(job => job.clip.path === selectedClip.path && job.request.deleteOriginal) : undefined
 
   // In/out points moved away from the ends of the clip
@@ -448,41 +490,34 @@ export default function MainContent() {
   const autoRenamePath = useRef<string | null>(null)
   const [renameRequest, setRenameRequest] = useState(0)
   useEffect(() => {
-    if (selectedClip?.path !== autoRenamePath.current) autoRenamePath.current = null
-  }, [selectedClip?.path])
-  const handleTitleClose = useCallback((reason: 'saved' | 'unchanged' | 'cancelled') => {
+    if (selectedClip && selectedClip.path !== autoRenamePath.current) autoRenamePath.current = null
+  }, [selectedClip])
+  // Enter on the box opened by C moves on; Escape or clicking away keeps you on the clip
+  const handleTitleClose = useCallback((reason: 'enter' | 'escape' | 'blur') => {
     if (!selectedClip || autoRenamePath.current !== selectedClip.path) return
     autoRenamePath.current = null
-    if (reason !== 'cancelled') selectNextClip()
+    if (reason === 'enter') selectNextClip()
   }, [selectedClip, selectNextClip])
 
+  // What's typed in the rename box, kept here so it survives the player reloading the clip
+  // (e.g. when compressing finishes mid-typing)
+  const [titleDraft, setTitleDraft] = useState<{ path: string; value: string } | null>(null)
+  const handleDraftChange = useCallback((value: string | null) => {
+    if (!selectedClip) return
+    setTitleDraft(value === null ? null : { path: selectedClip.path, value })
+  }, [selectedClip])
+
+  // The new name shows right away; the file itself is renamed once you move off the clip
   const handleRename = useCallback(async (newName: string): Promise<boolean> => {
     if (!selectedClip) return false
-    // Compressing reads the file and writes next to it under its current name
-    // so the new name is applied once it's done
-    if (compressJobs.some(job => job.clip.path === selectedClip.path)) {
-      if (/[<>:"/\\|?*]/.test(newName)) {
-        addToast('A name can\'t contain < > : " / \\ | ? *', 'error')
-        return false
-      }
-      setPendingRename(selectedClip.path, newName)
-      addToast(`Will be renamed to "${newName}" when compressing finishes`, 'info')
-      return true
-    }
-    const result = await window.clipit.renameFile(selectedClip.path, newName)
-    if (!result.success || !result.newPath) {
-      addToast(result.error || 'Failed to rename file', 'error')
+    if (/[<>:"/\\|?*]/.test(newName)) {
+      addToast('A name can\'t contain < > : " / \\ | ? *', 'error')
       return false
     }
-    if (result.newPath !== selectedClip.path) {
-      restoreTimeRef.current = videoRef.current?.currentTime ?? null
-      await refreshClips()
-      const clips = await window.clipit.getClips(selectedClip.game)
-      const renamed = clips.find(c => c.path === result.newPath)
-      if (renamed) selectClip(renamed)
-    }
+    if (newName === selectedClip.name) cancelRename(selectedClip.path)
+    else queueRename(selectedClip.path, newName)
     return true
-  }, [selectedClip, compressJobs, addToast, refreshClips, selectClip])
+  }, [selectedClip, addToast])
 
   const handleCompressStart = useCallback((request: CompressRequest) => {
     if (!selectedClip) return
@@ -496,14 +531,9 @@ export default function MainContent() {
   selectedClipRef.current = selectedClip
   useEffect(() => {
     return onCompressFinished(async (job, result) => {
-      if (result.renameError) addToast(`Couldn't rename ${job.clip.name}: ${result.renameError}`, 'error')
       if (!result.success) {
         if (!result.cancelled) {
           addToast(`${job.clip.name}: ${result.error || 'Compression failed'}`, 'error')
-        }
-        if (job.renameTo) {
-          await refreshClips()
-          await refreshGames()
         }
         return
       }
@@ -514,14 +544,26 @@ export default function MainContent() {
       }
 
       const wasViewing = selectedClipRef.current?.path === job.clip.path
-      const replacedInPlace = result.output === job.clip.path
-      if (wasViewing && replacedInPlace) selectClip(null)
-      await refreshClips()
-      await refreshGames()
-      if (wasViewing && job.request.deleteOriginal && result.output) {
-        const clips = await window.clipit.getClips(job.clip.game)
-        const compressed = clips.find(c => c.path === result.output)
-        if (compressed && selectedClipRef.current?.path !== result.output) selectClip(compressed)
+      const followOutput = wasViewing && job.request.deleteOriginal && result.output
+      // A half-typed name moves to the compressed file, and its rename waits until we're there
+      if (followOutput) {
+        holdRename(result.output!)
+        setTitleDraft(draft => draft && draft.path === job.clip.path ? { ...draft, path: result.output! } : draft)
+      }
+      try {
+        await refreshClips()
+        await refreshGames()
+        // The player was showing the "compressing" screen, so it loads the new file fresh;
+        // the clip is swapped for its new details without clearing the selection,
+        // which would close a rename box mid-typing
+        const current = selectedClipRef.current?.path
+        if (followOutput && (current === job.clip.path || current === result.output)) {
+          const clips = await window.clipit.getClips(job.clip.game)
+          const compressed = clips.find(c => c.path === result.output)
+          if (compressed) selectClip(compressed)
+        }
+      } finally {
+        if (followOutput) releaseRename(result.output!)
       }
     })
   }, [addToast, selectClip, refreshClips, refreshGames])
@@ -589,11 +631,11 @@ export default function MainContent() {
           break
         case 'arrowleft':
           e.preventDefault()
-          handleSkip(-SKIP_SECONDS)
+          handleSkip(-skipSeconds)
           break
         case 'arrowright':
           e.preventDefault()
-          handleSkip(SKIP_SECONDS)
+          handleSkip(skipSeconds)
           break
         case ',':
         case '<':
@@ -610,7 +652,7 @@ export default function MainContent() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedClip, isClipBeingReplaced, currentTime, volume, trimStart, trimEnd, duration, handlePlayPause, handleResetTrim, handleSetTrimStart, handleToggleMute, handleToggleFullscreen, handleVolumeChange, handleTrim, handleOpenCompress, handleQuickCompress, handleStepFrame, handleSkip, handleCycleSpeed])
+  }, [selectedClip, isClipBeingReplaced, currentTime, volume, trimStart, trimEnd, duration, handlePlayPause, handleResetTrim, handleSetTrimStart, handleToggleMute, handleToggleFullscreen, handleVolumeChange, handleTrim, handleOpenCompress, handleQuickCompress, handleStepFrame, handleSkip, handleCycleSpeed, skipSeconds])
 
   // Escape while fullscreen should only leave fullscreen, not also clear the sidebar selection
   useEffect(() => {
@@ -675,7 +717,8 @@ export default function MainContent() {
       // Only the clip C was pressed on; a fresh title on the next clip mustn't open
       editRequest={autoRenamePath.current === selectedClip.path ? renameRequest : 0}
       onClose={handleTitleClose}
-      hint={compressJobs.some(job => job.clip.path === selectedClip.path) ? 'Renamed once compressing finishes' : undefined}
+      draft={titleDraft?.path === selectedClip.path ? titleDraft.value : null}
+      onDraftChange={handleDraftChange}
     />
   )
 
@@ -701,21 +744,35 @@ export default function MainContent() {
 
   const isVideo = selectedClip.type === 'video'
 
-  // Next to the volume, with a menu of speeds that opens upwards
+  // Next to the volume: the common speeds are one click, the rest in a menu that opens upwards.
+  // Clicking the active speed again goes back to 1x.
+  const offMenu = !SPEED_BUTTONS.includes(playbackSpeed)
   const speedControl = (
-    <div className="speed-control" ref={speedMenuRef}>
-      <button
-        className={`speed-toggle ${playbackSpeed !== 1 ? 'changed' : ''}`}
-        title="Playback speed (S cycles 1x, 0.5x, 0.25x)"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={(e) => {
-          e.stopPropagation()
-          setShowSpeedMenu(!showSpeedMenu)
-        }}
-      >
-        <Gauge size={16} />
-        {playbackSpeed}x
-      </button>
+    <div className="speed-control" ref={speedMenuRef} title="Playback speed (S cycles 1x, 0.5x, 0.25x)">
+      <div className="speed-quick">
+        <Gauge size={15} className="speed-icon" />
+        {SPEED_BUTTONS.map(speed => (
+          <button
+            key={speed}
+            className={speed === playbackSpeed ? 'active' : ''}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setPlaybackSpeed(speed === playbackSpeed ? 1 : speed)}
+          >
+            {speed}x
+          </button>
+        ))}
+        <button
+          className={`speed-more ${offMenu ? 'active' : ''}`}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation()
+            setShowSpeedMenu(!showSpeedMenu)
+          }}
+          title="More speeds"
+        >
+          {offMenu ? `${playbackSpeed}x` : <ChevronDown size={14} />}
+        </button>
+      </div>
       {showSpeedMenu && (
         <div className="speed-menu" onClick={(e) => e.stopPropagation()}>
           {PLAYBACK_SPEEDS.map(speed => (
@@ -731,6 +788,62 @@ export default function MainContent() {
               {speed}x
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  )
+
+  // How far ← and → jump: − and + step it, the middle opens presets and a custom value
+  const skipControl = (
+    <div className="skip-control" ref={skipMenuRef} title="How far the ← and → keys skip">
+      <button onMouseDown={(e) => e.preventDefault()} onClick={() => setSkipSeconds(skipSeconds - (skipSeconds <= 1 ? 0.5 : 1))} title="Skip less">
+        <Minus size={13} />
+      </button>
+      <button className="skip-value" onMouseDown={(e) => e.preventDefault()} onClick={() => setShowSkipMenu(!showSkipMenu)} title="Choose how far ← and → skip">
+        ←→ {skipSeconds}s
+      </button>
+      <button onMouseDown={(e) => e.preventDefault()} onClick={() => setSkipSeconds(skipSeconds + (skipSeconds < 1 ? 0.5 : 1))} title="Skip more">
+        <Plus size={13} />
+      </button>
+      {showSkipMenu && (
+        <div className="speed-menu skip-menu" onClick={(e) => e.stopPropagation()}>
+          {SKIP_PRESETS.map(seconds => (
+            <button
+              key={seconds}
+              className={seconds === skipSeconds ? 'active' : ''}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setSkipSeconds(seconds)
+                setShowSkipMenu(false)
+              }}
+            >
+              {seconds}s
+            </button>
+          ))}
+          <label className="skip-custom">
+            Custom
+            <input
+              type="number"
+              min={0.5}
+              max={120}
+              step={0.5}
+              defaultValue={skipSeconds}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                if (e.key === 'Enter') {
+                  const value = parseFloat((e.target as HTMLInputElement).value)
+                  if (value > 0) setSkipSeconds(value)
+                  setShowSkipMenu(false)
+                }
+                if (e.key === 'Escape') setShowSkipMenu(false)
+              }}
+              onBlur={(e) => {
+                const value = parseFloat(e.target.value)
+                if (value > 0) setSkipSeconds(value)
+              }}
+            />
+            s
+          </label>
         </div>
       )}
     </div>
@@ -987,13 +1100,14 @@ export default function MainContent() {
 
           {isVideo && volumeControl}
           {isVideo && speedControl}
+          {isVideo && skipControl}
 
           {isVideo && (
             <div className="shortcuts-hint">
               {SHORTCUTS.map(([key, label]) => (
                 <div className="shortcut-item" key={label}>
                   <kbd>{key}</kbd>
-                  <span>{label}</span>
+                  <span>{label === 'Skip' ? `${skipSeconds}s` : label}</span>
                 </div>
               ))}
             </div>

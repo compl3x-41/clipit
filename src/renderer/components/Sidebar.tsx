@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useApp } from '../context/AppContext'
-import { getCompressJobs } from '../compressQueue'
+import { usePendingRenames, queueRename } from '../renameQueue'
 import ClipHoverCard, { formatUkDate, formatUkTime } from './ClipHoverCard'
 import PeoplePicker, { PersonAvatar } from './PeoplePicker'
 import { SET_WIDTH_EVENT } from './SidebarResizer'
@@ -54,12 +54,12 @@ function loadLayout(): ClipLayout {
 }
 
 export default function Sidebar() {
+  const pendingRenames = usePendingRenames()
   const {
     games,
     selectedGame,
     selectGame,
     filteredClips,
-    selectedClip,
     selectedClips,
     selectClip,
     selectAllClips,
@@ -256,29 +256,15 @@ export default function Sidebar() {
   const handleRenameStart = () => {
     if (!contextMenu) return
     setRenameClip(contextMenu.clip)
-    setRenameValue(contextMenu.clip.name.replace(/\.[^.]+$/, ''))
+    setRenameValue((pendingRenames.get(contextMenu.clip.path) ?? contextMenu.clip.name).replace(/\.[^.]+$/, ''))
     setContextMenu(null)
   }
 
   const handleRenameSubmit = async () => {
     if (!renameClip || !renameValue.trim()) return
-    if (getCompressJobs().some(job => job.clip.path === renameClip.path)) {
-      addToast('Wait for this clip to finish compressing before renaming it', 'info')
-      return
-    }
-
-    const result = await window.clipit.renameFile(renameClip.path, renameValue.trim())
-    if (result.success) {
-      addToast('File renamed successfully', 'success')
-      await refreshClips()
-      await refreshGames()
-      // If renamed clip was selected, clear selection
-      if (selectedClip?.path === renameClip.path) {
-        selectClip(null)
-      }
-    } else {
-      addToast(result.error || 'Failed to rename file', 'error')
-    }
+    const ext = renameClip.name.match(/\.[^.]+$/)?.[0] ?? ''
+    // Same as the title box: the file is renamed once it's off screen and not compressing
+    queueRename(renameClip.path, renameValue.trim() + ext)
     setRenameClip(null)
     setRenameValue('')
   }
@@ -632,7 +618,7 @@ export default function Sidebar() {
                     </div>
                   ) : (
                     <>
-                      <div className="list-item-name">{clip.name}</div>
+                      <div className="list-item-name">{pendingRenames.get(clip.path) ?? clip.name}</div>
                       <div className="list-item-meta">
                         {selectedGame === ALL_CLIPS && <>{clip.game} • </>}
                         {clip.sizeMb} MB
