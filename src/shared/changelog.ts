@@ -5,6 +5,13 @@ export interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '1.6.3',
+    changes: [
+      'Faster updates: new versions download in the background and Restart now installs them silently, with no installer window',
+      'Clipit checks for updates every few hours while it is open, and a failed background check no longer shows an error',
+    ],
+  },
+  {
     version: '1.6.2',
     changes: [
       'Game folders on Home show cover art from Steam, or the newest clip for games that aren\'t on Steam',

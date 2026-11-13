@@ -1,6 +1,6 @@
 {
   "name": "clipit",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "Cross-platform game clip manager with multi-GPU encoding support",
   "author": {
     "name": "lowbit",
