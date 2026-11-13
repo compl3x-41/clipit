@@ -10,6 +10,7 @@ const defaults: Settings = {
   recordingsDir: '',
   shareDir: '',
   generateThumbnails: true,
+  fetchGameCovers: true,
   hasSeenTunnelNotice: false,
   encodeOnShare: true,
   codec: 'h265',

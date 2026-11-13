@@ -4,8 +4,9 @@ import { usePendingRenames, queueRename } from '../renameQueue'
 import ClipHoverCard, { formatUkDate, formatUkTime } from './ClipHoverCard'
 import PeoplePicker, { PersonAvatar } from './PeoplePicker'
 import { SET_WIDTH_EVENT } from './SidebarResizer'
+import GameFolders, { formatBytes, type GameLayout } from './GameFolders'
 import { ALL_CLIPS } from '../../shared/types'
-import { Home, Globe, Settings, Loader2, Folder, FolderOpen, Layers, List, Search, X, Sparkles, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
+import { Home, Globe, Settings, Loader2, Folder, LayoutGrid, List, Search, X, Sparkles, Video, Image, Eye, Trash2, Edit, Copy, ChevronLeft, ChevronRight, ChevronRight as Separator, RefreshCw } from 'lucide-react'
 import type { Clip } from '../../shared/types'
 
 // List rows, or a grid of 1, 2 or 3 cards across
@@ -17,17 +18,6 @@ const LAYOUTS: { id: ClipLayout; width: number }[] = [
   { id: '2', width: 440 },
   { id: '3', width: 600 }
 ]
-
-export function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`
-  return `${Math.round(bytes / 1024)} KB`
-}
-
-function folderStats(game: { count: number; sizeBytes?: number }): string {
-  if (game.count === 0) return 'Empty'
-  return `${game.count} ${game.count === 1 ? 'clip' : 'clips'} · ${formatBytes(game.sizeBytes ?? 0)}`
-}
 
 // How the game folders on Home are ordered
 type GameSort = 'recent' | 'count' | 'name'
@@ -41,6 +31,19 @@ function loadGameSort(): GameSort {
     // Fall back to the default
   }
   return 'recent'
+}
+
+// Game folders on Home as cover cards or compact rows
+const GAME_LAYOUT_KEY = 'clipit:gameLayout'
+
+function loadGameLayout(): GameLayout {
+  try {
+    const saved = localStorage.getItem(GAME_LAYOUT_KEY)
+    if (saved === 'grid' || saved === 'list') return saved
+  } catch {
+    // Fall back to the default
+  }
+  return 'grid'
 }
 
 function loadLayout(): ClipLayout {
@@ -112,6 +115,20 @@ export default function Sidebar() {
     }
   }
   const [gameSort, setGameSort] = useState<GameSort>(loadGameSort)
+  const [gameLayout, setGameLayout] = useState<GameLayout>(loadGameLayout)
+  // Bumped when a cover changes, so the new picture is loaded instead of the cached one
+  const [coverBumps, setCoverBumps] = useState<Record<string, number>>({})
+  const coverVersion = (game: string) => (coverBumps[game] ?? 0) * 2 + (settings?.fetchGameCovers === false ? 1 : 0)
+  const bumpCover = (game: string) => setCoverBumps(prev => ({ ...prev, [game]: (prev[game] ?? 0) + 1 }))
+
+  const chooseGameLayout = (next: GameLayout) => {
+    setGameLayout(next)
+    try {
+      localStorage.setItem(GAME_LAYOUT_KEY, next)
+    } catch {
+      // Layout still applies for this session
+    }
+  }
 
   const chooseGameSort = (next: GameSort) => {
     setGameSort(next)
@@ -397,7 +414,10 @@ export default function Sidebar() {
           ) : (
             <>
               <div className="sidebar-title">Clipit</div>
-              <div className="sidebar-subtitle">{games.length} games</div>
+              <div className="sidebar-subtitle">
+                {games.length} {games.length === 1 ? 'game' : 'games'}
+                {totalClips > 0 && <> · {totalClips} {totalClips === 1 ? 'clip' : 'clips'}</>}
+              </div>
             </>
           )}
         </div>
@@ -461,6 +481,14 @@ export default function Sidebar() {
             <option value="count">Most Clips</option>
             <option value="name">Name A-Z</option>
           </select>
+          <div className="layout-switch" title="Folder layout">
+            <button className={gameLayout === 'grid' ? 'active' : ''} onClick={() => chooseGameLayout('grid')} title="Covers">
+              <LayoutGrid size={14} />
+            </button>
+            <button className={gameLayout === 'list' ? 'active' : ''} onClick={() => chooseGameLayout('list')} title="List">
+              <List size={14} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -637,37 +665,19 @@ export default function Sidebar() {
             )
           })
         ) : (
-          // Show games list, with every clip in one place at the top
-          [...(games.length > 1 ? [{ name: ALL_CLIPS, count: totalClips, sizeBytes: totalBytes }] : []), ...sortedGames].map((game) => game.name === ALL_CLIPS ? (
-            <div key={ALL_CLIPS} className="list-item list-item-all" onClick={() => selectGame(ALL_CLIPS)}>
-              <Layers size={18} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-              <div className="list-item-info">
-                <div className="list-item-name">All clips</div>
-              </div>
-              <span className="list-item-stats">{folderStats(game)}</span>
-            </div>
-          ) : (
-            <div
-              key={game.name}
-              className={`list-item ${game.name === 'Uncategorized' ? 'list-item-uncategorized' : ''} ${game.count === 0 ? 'list-item-empty' : ''}`}
-              onClick={() => selectGame(game.name)}
-            >
-              {game.name === 'Uncategorized' && (
-                <FolderOpen size={18} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-              )}
-              <div className="list-item-info">
-                <div className="list-item-name">
-                  {game.name}
-                  {game.name === 'Uncategorized' && (
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', marginLeft: '6px' }}>
-                      (Root folder)
-                    </span>
-                  )}
-                </div>
-              </div>
-              <span className="list-item-stats">{folderStats(game)}</span>
-            </div>
-          ))
+          // Game folders as cover cards, with every clip in one place at the top
+          games.length > 0 && (
+            <GameFolders
+              games={sortedGames}
+              layout={gameLayout}
+              totalClips={totalClips}
+              totalBytes={totalBytes}
+              coverVersion={coverVersion}
+              onOpen={selectGame}
+              onCoverChanged={bumpCover}
+              onError={(message) => addToast(message, 'error')}
+            />
+          )
         )}
 
         {selectedGame && filteredClips.length === 0 && (

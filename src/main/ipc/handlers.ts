@@ -1,8 +1,11 @@
 import { ipcMain, dialog, clipboard, shell, app } from 'electron'
+import path from 'path'
+import fs from 'fs'
 import { settingsStore } from '../store/SettingsStore'
 import { getGames, getClips, getClipInfo, describeFile } from '../services/MediaService'
 import { watchRecordings } from '../services/FolderWatchService'
 import { getCleanupSummary, runCleanup } from '../services/CleanupService'
+import { setCustomCover, useClipAsCover, resetCover, getCoverChoice, COVER_IMAGE_EXTENSIONS } from '../services/CoverService'
 import { getPeople, addPerson, removePerson, setClipPeople, updatePerson, mergePeople } from '../store/PeopleStore'
 import { startScan, cancelScan, getScanProgress, getUnlinkedNames, getNamePreview, linkName, ignoreName, unignoreName, applyScanResults } from '../services/OverlayScanService'
 import { getIgnoredNames, getScanSettings, setScanSettings } from '../store/ScanStore'
@@ -38,6 +41,44 @@ export function registerIpcHandlers() {
   // Trim operations
   ipcMain.handle('clipit:trim:execute', async (_, args: { path: string; start: number; end: number; saveAsCopy?: boolean }) => {
     return trimVideo(args.path, args.start, args.end, args.saveAsCopy || false)
+  })
+
+  // Game folder covers
+  ipcMain.handle('clipit:covers:choice', async (_, args: { game: string }) => {
+    if (typeof args?.game !== 'string') return 'auto'
+    return getCoverChoice(args.game)
+  })
+
+  ipcMain.handle('clipit:covers:choose', async (_, args: { game: string }) => {
+    if (typeof args?.game !== 'string') return { success: false }
+    const result = await dialog.showOpenDialog({
+      title: `Choose a cover for ${args.game}`,
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: COVER_IMAGE_EXTENSIONS }]
+    })
+    if (result.canceled || result.filePaths.length === 0) return { success: false, cancelled: true }
+    return setCustomCover(args.game, result.filePaths[0])
+  })
+
+  ipcMain.handle('clipit:covers:use-clip', async (_, args: { game: string }) => {
+    if (typeof args?.game === 'string') useClipAsCover(args.game)
+  })
+
+  ipcMain.handle('clipit:covers:reset', async (_, args: { game: string }) => {
+    if (typeof args?.game === 'string') resetCover(args.game)
+  })
+
+  // Open a game folder (or the recordings folder for Uncategorized) in Explorer
+  ipcMain.handle('clipit:media:open-game-folder', async (_, args: { game: string }) => {
+    const recordingsDir = settingsStore.get('recordingsDir')
+    if (!recordingsDir || typeof args?.game !== 'string') return { success: false, error: 'No recordings folder' }
+    const isRoot = args.game === 'Uncategorized' && !fs.existsSync(path.join(recordingsDir, args.game))
+    const folder = isRoot ? recordingsDir : path.join(recordingsDir, args.game)
+    // Only folders directly inside the recordings folder
+    if (!isRoot && path.dirname(path.resolve(folder)) !== path.resolve(recordingsDir)) return { success: false, error: 'Not a game folder' }
+    if (!fs.existsSync(folder)) return { success: false, error: 'Folder not found' }
+    const error = await shell.openPath(folder)
+    return error ? { success: false, error } : { success: true }
   })
 
   // Clearing Clipit's own cached files

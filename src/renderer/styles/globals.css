@@ -3421,3 +3421,337 @@ button.clip-title:hover .clip-title-icon {
   font-size: 13px;
   color: var(--text-secondary);
 }
+
+/* ===== Game folders on Home ===== */
+.game-folders {
+  padding: 4px 12px 16px;
+}
+
+.game-folders-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+
+.game-folders-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+/* Cover image with a coloured initials tile underneath while it loads */
+.game-cover {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(120% 140% at 0% 0%, hsl(var(--cover-hue) 55% 34% / 0.95), transparent 60%),
+    linear-gradient(135deg, hsl(var(--cover-hue) 45% 22%), hsl(calc(var(--cover-hue) + 40) 40% 12%));
+}
+
+.game-cover-initials {
+  display: flex;
+  align-items: center;
+  color: hsl(var(--cover-hue) 70% 82% / 0.85);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  user-select: none;
+}
+
+.game-cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.game-cover-img.loaded {
+  opacity: 1;
+}
+
+/* Grid: cover cards */
+.game-card {
+  position: relative;
+  aspect-ratio: 460 / 215;
+  min-height: 92px;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  outline: none;
+  user-select: none;
+}
+
+.game-card-cover {
+  position: absolute;
+  inset: 0;
+}
+
+.game-card-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 25%, rgba(0, 0, 0, 0.62) 60%, rgba(0, 0, 0, 0.92) 100%);
+  pointer-events: none;
+}
+
+.game-card-info {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 8px;
+  pointer-events: none;
+}
+
+.game-card-name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.game-card-stats {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-card-chip {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.game-card:hover,
+.game-card:focus-visible,
+.game-card.menu-open {
+  transform: translateY(-2px);
+  box-shadow: 0 0 0 2px var(--accent), 0 8px 22px rgba(0, 0, 0, 0.45);
+}
+
+.game-card:hover .game-cover-img.loaded,
+.game-card:focus-visible .game-cover-img.loaded {
+  transform: scale(1.05);
+}
+
+.game-card:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.game-card.is-empty {
+  opacity: 0.55;
+}
+
+.game-card.is-empty .game-cover {
+  filter: grayscale(1);
+}
+
+.game-card.is-empty:hover {
+  opacity: 0.85;
+}
+
+/* List: compact rows with a small cover */
+.game-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.game-row:hover,
+.game-row:focus-visible,
+.game-row.menu-open {
+  background: var(--bg-tertiary);
+}
+
+.game-row-cover {
+  flex: none;
+  width: 96px;
+  height: 45px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.game-row-cover .game-cover-initials {
+  font-size: 14px;
+}
+
+.game-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.game-row-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-row-tag {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.game-row-stats {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.game-row-ago {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.game-row.is-empty {
+  opacity: 0.5;
+}
+
+.game-row.is-empty .game-cover {
+  filter: grayscale(1);
+}
+
+/* All clips banner above the folders, over a blurred mosaic of recent covers */
+.game-all {
+  grid-column: 1 / -1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 14px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+  background: var(--bg-tertiary);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  transition: box-shadow 0.18s ease;
+}
+
+.game-all::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(10, 10, 12, 0.92) 0%, rgba(10, 10, 12, 0.75) 45%, rgba(10, 10, 12, 0.45) 100%);
+  pointer-events: none;
+}
+
+.game-all:hover,
+.game-all:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.game-all-mosaic {
+  position: absolute;
+  inset: -12px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  filter: blur(6px) saturate(1.2);
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.game-all:hover .game-all-mosaic {
+  opacity: 0.9;
+}
+
+.game-all-mosaic .game-cover-initials {
+  display: none;
+}
+
+.game-all-icon {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #111;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.game-all-text {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.game-all-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.game-all-stats {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.game-folders-list .game-all {
+  margin: 0 0 6px;
+}
+
+/* Long game names in the right-click menu */
+.game-folders .context-menu-header {
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-card,
+  .game-cover-img,
+  .game-all-mosaic {
+    transition: none;
+  }
+
+  .game-card:hover,
+  .game-card:hover .game-cover-img.loaded {
+    transform: none;
+  }
+}

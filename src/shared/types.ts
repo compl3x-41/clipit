@@ -6,6 +6,8 @@ export interface Game {
   // Newest clip in the folder, so folders can be sorted by most recently added to
   latest?: number
   sizeBytes?: number
+  // Newest clip in the folder, shown as the cover when there's no game art
+  latestPath?: string
 }
 
 export interface Clip {
@@ -158,6 +160,8 @@ export interface Settings {
   recordingsDir: string
   shareDir: string
   generateThumbnails: boolean
+  // Look up game folder covers on Steam
+  fetchGameCovers: boolean
   hasSeenTunnelNotice: boolean
   encodeOnShare: boolean
   codec: 'h264' | 'h265'

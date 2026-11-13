@@ -28,6 +28,24 @@ contextBridge.exposeInMainWorld('clipit', {
     return `clipit-image:///${urlPath}`
   },
 
+  getCoverUrl: (game: string, version = 0): string =>
+    `clipit-cover://game/${encodeURIComponent(game)}${version ? `?v=${version}` : ''}`,
+
+  getCoverChoice: (game: string): Promise<'auto' | 'custom' | 'clip'> =>
+    ipcRenderer.invoke('clipit:covers:choice', { game }),
+
+  chooseCover: (game: string): Promise<{ success: boolean; cancelled?: boolean; error?: string }> =>
+    ipcRenderer.invoke('clipit:covers:choose', { game }),
+
+  useClipAsCover: (game: string): Promise<void> =>
+    ipcRenderer.invoke('clipit:covers:use-clip', { game }),
+
+  resetCover: (game: string): Promise<void> =>
+    ipcRenderer.invoke('clipit:covers:reset', { game }),
+
+  openGameFolder: (game: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('clipit:media:open-game-folder', { game }),
+
   getThumbnailUrl: (path: string, time?: number): string => {
     const urlPath = path.replace(/\\/g, '/')
     return `clipit-thumb:///${urlPath}${time ? `?time=${time}` : ''}`
@@ -233,6 +251,12 @@ declare global {
       getVideoUrl: (path: string) => string
       getImageUrl: (path: string) => string
       getThumbnailUrl: (path: string, time?: number) => string
+      getCoverUrl: (game: string, version?: number) => string
+      getCoverChoice: (game: string) => Promise<'auto' | 'custom' | 'clip'>
+      chooseCover: (game: string) => Promise<{ success: boolean; cancelled?: boolean; error?: string }>
+      useClipAsCover: (game: string) => Promise<void>
+      resetCover: (game: string) => Promise<void>
+      openGameFolder: (game: string) => Promise<{ success: boolean; error?: string }>
       trim: (path: string, start: number, end: number, saveAsCopy?: boolean) => Promise<TrimResult>
       probeVideo: (path: string) => Promise<VideoProbe | null>
       compress: (request: CompressRequest) => Promise<CompressResult>

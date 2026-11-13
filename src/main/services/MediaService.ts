@@ -167,6 +167,7 @@ export function getGames(): Game[] {
 
   let rootCount = 0
   let rootLatest = 0
+  let rootLatestPath: string | undefined
   let rootSize = 0
   for (const entry of entries) {
     if (entry.isFile()) {
@@ -186,15 +187,19 @@ export function getGames(): Game[] {
 
       if (allExtensions.includes(ext)) {
         rootCount++
-        const facts = fileFacts(path.join(recordingsDir, entry.name))
-        rootLatest = Math.max(rootLatest, facts.added)
+        const filePath = path.join(recordingsDir, entry.name)
+        const facts = fileFacts(filePath)
+        if (facts.added >= rootLatest) {
+          rootLatest = facts.added
+          rootLatestPath = filePath
+        }
         rootSize += facts.size
       }
     }
   }
 
   if (rootCount > 0) {
-    games.push({ name: 'Uncategorized', count: rootCount, latest: rootLatest, sizeBytes: rootSize })
+    games.push({ name: 'Uncategorized', count: rootCount, latest: rootLatest, latestPath: rootLatestPath, sizeBytes: rootSize })
   }
 
   for (const entry of entries) {
@@ -203,6 +208,7 @@ export function getGames(): Game[] {
 
       let count = 0
       let latest = 0
+      let latestPath: string | undefined
       let sizeBytes = 0
       try {
         const files = fs.readdirSync(folderPath)
@@ -210,8 +216,12 @@ export function getGames(): Game[] {
           const ext = path.extname(file).toLowerCase()
           if (allExtensions.includes(ext) && !file.endsWith('.thumb.jpg') && !isTempFile(file)) {
             count++
-            const facts = fileFacts(path.join(folderPath, file))
-            latest = Math.max(latest, facts.added)
+            const filePath = path.join(folderPath, file)
+            const facts = fileFacts(filePath)
+            if (facts.added >= latest) {
+              latest = facts.added
+              latestPath = filePath
+            }
             sizeBytes += facts.size
           }
         }
@@ -219,7 +229,7 @@ export function getGames(): Game[] {
       }
 
       // Empty game folders are listed too, so they can be spotted and tidied up
-      games.push({ name: entry.name, count, latest, sizeBytes })
+      games.push({ name: entry.name, count, latest, latestPath, sizeBytes })
     }
   }
 

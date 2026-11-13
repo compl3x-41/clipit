@@ -93,6 +93,15 @@ protocol.registerSchemesAsPrivileged([
     }
   },
   {
+    scheme: 'clipit-cover',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      bypassCSP: true
+    }
+  },
+  {
     scheme: 'clipit-thumb',
     privileges: {
       secure: true,
@@ -111,8 +120,8 @@ app.whenReady().then(() => {
         ...details.responseHeaders,
         'Content-Security-Policy': [
           process.env.NODE_ENV === 'development'
-            ? "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* ws://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*; img-src 'self' data: blob: clipit-thumb: clipit-image:; media-src 'self' blob: clipit-video:; connect-src 'self' http://localhost:* ws://localhost:*;"
-            : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: clipit-thumb: clipit-image:; media-src 'self' blob: clipit-video:; connect-src 'self';"
+            ? "default-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:* ws://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:*; style-src 'self' 'unsafe-inline' http://localhost:*; img-src 'self' data: blob: clipit-thumb: clipit-image: clipit-cover:; media-src 'self' blob: clipit-video:; connect-src 'self' http://localhost:* ws://localhost:*;"
+            : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: clipit-thumb: clipit-image: clipit-cover:; media-src 'self' blob: clipit-video:; connect-src 'self';"
         ]
       }
     })

@@ -11,6 +11,7 @@ export default function SettingsModal() {
   const [recordingsDir, setRecordingsDir] = useState(settings?.recordingsDir || '')
   const [shareDir, setShareDir] = useState(settings?.shareDir || '')
   const [generateThumbnails, setGenerateThumbnails] = useState(settings?.generateThumbnails ?? true)
+  const [fetchGameCovers, setFetchGameCovers] = useState(settings?.fetchGameCovers ?? true)
   const [encodeOnShare, setEncodeOnShare] = useState(settings?.encodeOnShare || false)
   const [codec, setCodec] = useState(settings?.codec || 'h264')
   const [quality, setQuality] = useState(settings?.quality || 'medium')
@@ -46,6 +47,7 @@ export default function SettingsModal() {
       recordingsDir,
       shareDir,
       generateThumbnails,
+      fetchGameCovers,
       encodeOnShare,
       codec: codec as 'h264' | 'h265',
       quality: quality as 'high' | 'medium' | 'low',
@@ -195,6 +197,20 @@ export default function SettingsModal() {
             </label>
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', marginLeft: '24px' }}>
               Small preview images will be generated the first time you open a game folder. If disabled, no thumbnails will be generated for videos.
+            </p>
+          </div>
+
+          <div className="form-group">
+            <label className="form-checkbox">
+              <input
+                type="checkbox"
+                checked={fetchGameCovers}
+                onChange={(e) => setFetchGameCovers(e.target.checked)}
+              />
+              Download game covers from Steam
+            </label>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', marginLeft: '24px' }}>
+              Game folder names are looked up on the Steam store to find their cover art. Games that aren't on Steam show their newest clip instead. Right-click a game on Home to pick your own cover.
             </p>
           </div>
         </div>

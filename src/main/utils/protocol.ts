@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { Readable } from 'stream'
 import { getThumbnail } from '../services/ThumbnailService'
+import { getCover } from '../services/CoverService'
 import { settingsStore } from '../store/SettingsStore'
 
 /**
@@ -134,6 +135,27 @@ export function registerProtocols() {
         }
       })
     } catch (error) {
+      return new Response('Internal server error', { status: 500 })
+    }
+  })
+
+  // Game folder covers
+  // URL format: clipit-cover://game/Apex%20Legends?v=1
+  protocol.handle('clipit-cover', async (request) => {
+    try {
+      const game = decodeURIComponent(new URL(request.url).pathname.replace(/^\/+/, ''))
+      const cover = game ? await getCover(game) : null
+      if (!cover) {
+        // Nothing to show: the page falls back to the newest clip
+        return new Response('No cover', { status: 404 })
+      }
+      return new Response(new Uint8Array(cover.data), {
+        headers: {
+          'Content-Type': cover.mimeType,
+          'Cache-Control': 'max-age=3600'
+        }
+      })
+    } catch {
       return new Response('Internal server error', { status: 500 })
     }
   })
