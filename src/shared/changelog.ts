@@ -5,6 +5,15 @@ export interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: '1.6.2',
+    changes: [
+      'Game folders on Home show cover art from Steam, or the newest clip for games that aren\'t on Steam',
+      'Folders show as cover cards or a compact list, with when you last added a clip',
+      'Right-click a game to pick your own cover image, use a clip as the cover, or open the folder',
+      'Turn off Steam cover downloads in Settings if you prefer',
+    ],
+  },
+  {
     version: '1.6.1',
     changes: [
       'Drag a video or picture onto Clipit to open it, even from outside your clips folder; edits are saved next to the file',
