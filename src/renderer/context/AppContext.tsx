@@ -336,8 +336,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [goHome])
 
   useEffect(() => {
+    // The download starts by itself, so go straight to showing its progress
     const unsubAvailable = window.clipit.onUpdateAvailable((info) => {
-      setUpdateStatus('available')
+      setUpdateStatus(prev => prev === 'ready' ? prev : 'downloading')
       setUpdateVersion(info.version)
     })
 

@@ -54,7 +54,8 @@ export default function UpdateBanner({
 
           {status === 'downloading' && (
             <div>
-              <strong>Downloading Update...</strong>
+              <strong>Downloading update</strong>
+              {version && <span style={{ marginLeft: '8px', opacity: 0.9 }}>Version {version}</span>}
               {progress !== undefined && (
                 <span style={{ marginLeft: '8px', opacity: 0.9 }}>
                   {Math.round(progress)}%
@@ -65,8 +66,10 @@ export default function UpdateBanner({
 
           {status === 'ready' && (
             <div>
-              <strong>Update Ready!</strong>
-              {version && <span style={{ marginLeft: '8px', opacity: 0.9 }}>Version {version} downloaded</span>}
+              <strong>{isInstallClicked ? 'Updating…' : 'Update ready'}</strong>
+              {version && <span style={{ marginLeft: '8px', opacity: 0.9 }}>
+                {isInstallClicked ? 'Clipit will reopen in a few seconds' : `Version ${version} downloaded, installs when you restart or close Clipit`}
+              </span>}
             </div>
           )}
         </div>
@@ -140,7 +143,7 @@ export default function UpdateBanner({
             }}
           >
             <RefreshCw size={16} />
-            Restart & Install
+            Restart now
           </button>
         )}
 
